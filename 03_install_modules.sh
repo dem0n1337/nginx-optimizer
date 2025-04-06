@@ -78,24 +78,42 @@ make -j$(nproc)
 make install
 cd ..
 
-# Kompilácia OpenSSL 3.x namiesto AWS-LC
-info "Kompilujem OpenSSL 3.x..."
-cd $OPENSSL_VERSION
-./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl shared zlib enable-ktls enable-ec_nistp_64_gcc_128 -DTCP_FASTOPEN=23 -fstack-protector-strong -O3
-make -j$(nproc)
-make install
-cd ..
-export OPENSSL_DIR="$BUILD_DIR/$OPENSSL_VERSION"
+# Kompilácia AWS-LC pre podporu QUIC/HTTP3
+info "Kompilujem AWS-LC pre podporu QUIC/HTTP3..."
+if [ -d "aws-lc" ]; then
+    cd aws-lc
+    mkdir -p build
+    cd build
+    cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 ..
+    make -j$(nproc)
+    cd ../..
+    export AWS_LC_PATH="$BUILD_DIR/aws-lc"
+else
+    warn "AWS-LC adresár neexistuje, QUIC/HTTP3 nemusí fungovať správne..."
+fi
 
-# Kompilácia BoringSSL (záloha)
-info "Kompilujem BoringSSL..."
-cd boringssl
-mkdir -p build
-cd build
-cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 ..
-make -j$(nproc)
-cd ../..
-export BORINGSSL_PATH="$BUILD_DIR/boringssl"
+# Kompilácia OpenSSL 3.x ako zálohu
+if [ ! -d "aws-lc" ] && [ -d "$OPENSSL_VERSION" ]; then
+    info "Kompilujem OpenSSL 3.x..."
+    cd $OPENSSL_VERSION
+    ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl shared zlib enable-ktls enable-ec_nistp_64_gcc_128 -DTCP_FASTOPEN=23 -fstack-protector-strong -O3
+    make -j$(nproc)
+    make install
+    cd ..
+    export OPENSSL_DIR="$BUILD_DIR/$OPENSSL_VERSION"
+fi
+
+# Kompilácia BoringSSL ako zálohu
+if [ ! -d "aws-lc" ] && [ ! -d "$OPENSSL_VERSION" ] && [ -d "boringssl" ]; then
+    info "Kompilujem BoringSSL..."
+    cd boringssl
+    mkdir -p build
+    cd build
+    cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 ..
+    make -j$(nproc)
+    cd ../..
+    export BORINGSSL_PATH="$BUILD_DIR/boringssl"
+fi
 
 # Príprava LuaJIT
 info "Kompilujem LuaJIT..."
@@ -126,17 +144,6 @@ cd ..
 cd lua-resty-lrucache
 make install
 cd ..
-
-# Príprava oficiálneho QUIC modulu
-if [ -d "nginx-quic" ]; then
-    info "Pripravujem oficiálny QUIC modul..."
-    # Skopírovanie QUIC implementácie do hlavného Nginx adresára
-    cp -rf nginx-quic/* nginx-$NGINX_VERSION/
-    cd nginx-$NGINX_VERSION
-    # Aplikácia potrebných zmien pre QUIC
-    patch -p1 < ../nginx-quic/patches/nginx-1.23.0-quic.patch || warn "QUIC patch sa nepodarilo aplikovať"
-    cd ..
-fi
 
 # Inštalácia ngx_small_light pre optimalizáciu obrázkov
 if [ -d "ngx_small_light" ]; then

@@ -126,8 +126,28 @@ info "Sťahujem ModSecurity..."
 clone_repo "https://github.com/SpiderLabs/ModSecurity" "ModSecurity" "ModSecurity"
 clone_repo "https://github.com/SpiderLabs/ModSecurity-nginx.git" "ModSecurity-nginx" "ModSecurity-nginx"
 
-# Stiahnutie OpenSSL 3.x namiesto AWS-LC
-info "Sťahujem OpenSSL 3.x..."
+# Stiahnutie AWS-LC (Amazon's Lightweight Cryptography library)
+info "Sťahujem AWS-LC..."
+if [ -d "aws-lc" ]; then
+    warn "aws-lc už existuje, preskakujem sťahovanie..."
+else
+    git clone --depth 1 https://github.com/aws/aws-lc.git || {
+        warn "Nepodarilo sa stiahnuť AWS-LC, skúšam pokračovať s OpenSSL..."
+    }
+fi
+
+# Stiahnutie BoringSSL pre podporu QUIC/HTTP3
+info "Sťahujem BoringSSL (odporúčané pre QUIC/HTTP3)..."
+if [ -d "boringssl" ]; then
+    warn "boringssl už existuje, preskakujem sťahovanie..."
+else
+    git clone --depth 1 https://github.com/google/boringssl.git || {
+        warn "Nepodarilo sa stiahnuť BoringSSL, QUIC/HTTP3 nemusí fungovať správne..."
+    }
+fi
+
+# Stiahnutie OpenSSL 3.x ako zálohu
+info "Sťahujem OpenSSL 3.x (záloha)..."
 OPENSSL_VERSION=$(curl -s https://www.openssl.org/source/ | grep -oP 'openssl-3\.[0-9]+\.[0-9]+\.tar\.gz' | head -1 | sed 's/\.tar\.gz//')
 if [ -z "$OPENSSL_VERSION" ]; then
     warn "Nepodarilo sa získať verziu OpenSSL, používam poslednú známu verziu 3.2.0"
@@ -140,10 +160,6 @@ else
     tar xzf $OPENSSL_VERSION.tar.gz
     rm $OPENSSL_VERSION.tar.gz
 fi
-
-# Stiahnutie BoringSSL (záloha ak OpenSSL 3.x nebude fungovať)
-info "Sťahujem BoringSSL..."
-clone_repo "https://github.com/google/boringssl.git" "boringssl" "BoringSSL"
 
 # Overenie dostupnosti ngx_pagespeed
 info "Kontrolujem dostupnosť ngx_pagespeed..."
@@ -272,14 +288,6 @@ clone_repo "https://github.com/slact/nginx_http_push_module.git" "nginx_http_pus
 # NJS Module (JavaScript v Nginx)
 info "Sťahujem NJS Module..."
 clone_repo "https://github.com/nginx/njs.git" "njs" "NJS Module"
-
-# Stiahnutie oficiálnej implementácie QUIC/HTTP/3
-info "Sťahujem oficiálnu implementáciu QUIC/HTTP/3..."
-if [ -d "nginx-quic" ]; then
-    warn "nginx-quic už existuje, preskakujem sťahovanie..."
-else
-    git clone --depth 1 https://github.com/nginx/nginx-quic.git || warn "Nepodarilo sa stiahnuť nginx-quic, preskakujem..."
-fi
 
 # Modul pre optimalizáciu obrázkov
 info "Sťahujem ngx_small_light pre optimalizáciu obrázkov..."

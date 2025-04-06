@@ -62,11 +62,11 @@ export MALLOC_CONF="background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:10
 info "Začínam kompiláciu Nginx $NGINX_VERSION..."
 cd nginx-$NGINX_VERSION
 
-# Konfigurácia s podporou HTTP/3 QUIC
-USE_QUIC=0
-if [ -f "auto/modules/ngx_http_v3_module.c" ]; then
-    info "Detekovaná podpora pre HTTP/3 QUIC, zapínam..."
-    USE_QUIC=1
+# Kontrola podpory QUIC/HTTP3 s AWS-LC
+QUIC_AVAILABLE=0
+if [ -d "$BUILD_DIR/aws-lc" ] && [ -d "$BUILD_DIR/aws-lc/build" ]; then
+    info "Detekovaný AWS-LC, QUIC/HTTP3 bude povolený..."
+    QUIC_AVAILABLE=1
 fi
 
 # Základné konfiguračné parametre
@@ -106,8 +106,6 @@ CONFIG_ARGS="--prefix=$INSTALL_DIR \
   --with-http_stub_status_module \
   --with-http_sub_module \
   --with-http_v2_module \
-  --with-http_ssl_stapling_module \
-  --with-http_ssl_stapling_responder_module \
   --with-mail \
   --with-mail_ssl_module \
   --with-stream \
@@ -128,25 +126,29 @@ if [ -d "$BUILD_DIR/zlib-cloudflare" ]; then
     CONFIG_ARGS="$CONFIG_ARGS --with-zlib=$BUILD_DIR/zlib-cloudflare --with-zlib-opt=-O3"
 fi
 
-# Pridanie HTTP/3 ak je dostupný
-if [ "$USE_QUIC" -eq 1 ]; then
+# Pridanie podpory QUIC/HTTP3 s AWS-LC
+if [ "$QUIC_AVAILABLE" -eq 1 ]; then
+    info "Pridávam podporu pre QUIC/HTTP3 s AWS-LC..."
+    # Pridanie HTTP/3 modulu
     CONFIG_ARGS="$CONFIG_ARGS --with-http_v3_module"
     
-    # Ak používame oficiálny QUIC modul, použijeme OpenSSL 3.x
-    if [ -d "$OPENSSL_DIR" ]; then
-        CONFIG_ARGS="$CONFIG_ARGS --with-openssl=$OPENSSL_DIR"
-    else
-        warn "Adresár s OpenSSL nebol nájdený, QUIC nemusí fungovať správne"
-    fi
+    # Pridanie ciest k AWS-LC v súlade s dokumentáciou
+    CONFIG_ARGS="$CONFIG_ARGS --with-openssl=$BUILD_DIR/aws-lc"
+    CONFIG_ARGS="$CONFIG_ARGS --with-cc-opt=\"-I$BUILD_DIR/aws-lc/include\""
+    CONFIG_ARGS="$CONFIG_ARGS --with-ld-opt=\"-L$BUILD_DIR/aws-lc/build/ssl -L$BUILD_DIR/aws-lc/build/crypto\""
+    
+    # Pridanie ďalších QUIC nastavení
+    CONFIG_ARGS="$CONFIG_ARGS --with-cc-opt=\"-DNGX_QUIC_DEBUG_PACKETS -DNGX_QUIC_DEBUG_CRYPTO\""
 else
-    # Štandardná konfigurácia s HTTP/3 QUIC od Cloudflare
-    CONFIG_ARGS="$CONFIG_ARGS --with-http_v3_module"
-    
-    if [ -d "$BUILD_DIR/quiche" ]; then
-        CONFIG_ARGS="$CONFIG_ARGS --with-quiche=$BUILD_DIR/quiche"
+    # Použitie OpenSSL, ak AWS-LC nie je k dispozícii
+    if [ -d "$OPENSSL_DIR" ]; then
+        info "Používam OpenSSL 3.x..."
+        CONFIG_ARGS="$CONFIG_ARGS --with-openssl=$OPENSSL_DIR"
+    elif [ -d "$BUILD_DIR/boringssl" ]; then 
+        info "Používam BoringSSL ako záložnú možnosť..."
+        CONFIG_ARGS="$CONFIG_ARGS --with-openssl=$BUILD_DIR/boringssl"
     else
-        warn "Quiche modul nebol nájdený, HTTP/3 bude deaktivované"
-        CONFIG_ARGS=$(echo "$CONFIG_ARGS" | sed 's/--with-http_v3_module//')
+        warn "Žiadna z podporovaných TLS knižníc nebola nájdená, používam systémovú"
     fi
 fi
 
