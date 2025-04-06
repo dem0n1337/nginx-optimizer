@@ -25,6 +25,21 @@ error() {
     exit 1
 }
 
+# Funkcia pre registráciu dynamických modulov
+register_dynamic_module() {
+  local MODULE_NAME=$1
+  local MODULE_PATH=$2
+  
+  if [ -f "$MODULE_PATH" ]; then
+    info "Registrujem dynamický modul: $MODULE_NAME"
+    echo "load_module $MODULE_PATH;" >> /usr/local/nginx/conf/dynamic-modules-includes.conf
+    return 0
+  else
+    warn "Súbor modulu nebol nájdený: $MODULE_PATH"
+    return 1
+  fi
+}
+
 # Kontrola BUILD_DIR
 if [ -z "$BUILD_DIR" ]; then
     BUILD_DIR="/opt/nginx-build"
@@ -133,12 +148,21 @@ if [ -d "aws-lc" ]; then
     cd build
     if command -v go >/dev/null 2>&1; then
         info "Go (golang) nájdený, pokračujem v kompilácii AWS-LC..."
+        # Uložíme pôvodné nastavenie CC a CXX
+        OLD_CC="$CC"
+        OLD_CXX="$CXX"
+        # Dočasne vypneme ccache pre AWS-LC
+        unset CC
+        unset CXX
         if cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 .. && make -j$(nproc); then
             info "AWS-LC úspešne skompilovaný"
             export AWS_LC_PATH="$BUILD_DIR/aws-lc"
         else
             warn "Kompilácia AWS-LC zlyhala, QUIC/HTTP3 nemusí fungovať správne"
         fi
+        # Obnovíme pôvodné nastavenie CC a CXX
+        export CC="$OLD_CC"
+        export CXX="$OLD_CXX"
     else
         warn "Go (golang) nie je nainštalovaný, AWS-LC nemôže byť skompilovaný, QUIC/HTTP3 nebude dostupný"
     fi
@@ -216,13 +240,37 @@ if [ -d "owasp-modsecurity-crs" ]; then
     cp owasp-modsecurity-crs/crs-setup.conf.example $INSTALL_DIR/modsec/crs/crs-setup.conf
 fi
 
+# Pripravíme adresár pre dynamické moduly
+mkdir -p /usr/local/nginx/conf
+touch /usr/local/nginx/conf/dynamic-modules-includes.conf
+
 # Aplikácia patchov na NGINX zdrojový kód
 info "Aplikujem patche na NGINX zdrojový kód..."
 cd nginx-$NGINX_VERSION
+
+# Generické patche
 patch -p1 < ../patches/pcre-jit.patch || warn "PCRE JIT patch sa nepodarilo aplikovať"
 patch -p1 < ../patches/tls-dynamic.patch || warn "TLS Dynamic Records patch sa nepodarilo aplikovať"
 # Aplikácia OpenSSL 3.x kompatibilného patchu
 patch -p1 < ../patches/openssl3-compatibility.patch || warn "OpenSSL 3.x compatibility patch sa nepodarilo aplikovať"
+
+# AWS-LC špecifické patche podľa verzie Nginx
+NGINX_VER_NUM=$(echo $NGINX_VERSION | sed 's/\.//g')
+if [ "$NGINX_VER_NUM" -ge 1274 ]; then
+  info "Aplikujem AWS-LC patche pre Nginx 1.27.4+"
+  patch -p1 < ../patches/aws-lc-nginx-1.27.4.patch || warn "AWS-LC patch pre Nginx 1.27.4+ sa nepodarilo aplikovať"
+  # Dodatočný patch pre $ssl_curve podporu s AWS-LC
+  patch -p1 < ../patches/aws-lc-nginx2.patch || warn "AWS-LC ssl_curve patch sa nepodarilo aplikovať"
+elif [ "$NGINX_VER_NUM" -ge 1273 ]; then
+  info "Aplikujem AWS-LC patche pre Nginx 1.27.3+"
+  patch -p1 < ../patches/aws-lc-nginx-1.27.3.patch || warn "AWS-LC patch pre Nginx 1.27.3+ sa nepodarilo aplikovať"
+  # Dodatočný patch pre $ssl_curve podporu s AWS-LC
+  patch -p1 < ../patches/aws-lc-nginx2.patch || warn "AWS-LC ssl_curve patch sa nepodarilo aplikovať"
+else
+  info "Aplikujem generické AWS-LC patche"
+  patch -p1 < ../patches/aws-lc-nginx.patch || warn "AWS-LC generický patch sa nepodarilo aplikovať"
+fi
+
 cd ..
 
 info "Inštalácia a príprava modulov bola úspešne dokončená."

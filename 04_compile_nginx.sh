@@ -58,13 +58,26 @@ export LUAJIT_INC=/usr/local/include/luajit-2.1
 # Nastavenie optimalizácie pre jemalloc
 export MALLOC_CONF="background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000,tcache:true"
 
+# Funkcia na detekciu AWS-LC
+AWS_LC_DETECTION() {
+  if [ -f "$BUILD_DIR/aws-lc/include/openssl/ssl.h" ]; then
+    grep -q "AWSLC" "$BUILD_DIR/aws-lc/include/openssl/ssl.h" && return 0 || return 1
+  fi
+  return 1
+}
+
 # Kompilácia Nginx
 info "Začínam kompiláciu Nginx $NGINX_VERSION..."
 cd nginx-$NGINX_VERSION
 
 # Kontrola podpory QUIC/HTTP3 s AWS-LC
 QUIC_AVAILABLE=0
-if [ -d "$BUILD_DIR/aws-lc" ]; then
+if AWS_LC_DETECTION; then
+  info "AWS-LC správne detekovaný, QUIC/HTTP3 bude povolený..."
+  QUIC_AVAILABLE=1
+  # Pridanie špecifických AWS-LC kompilačných flagov
+  CONFIG_ARGS="$CONFIG_ARGS -DOPENSSL_IS_AWSLC"
+elif [ -d "$BUILD_DIR/aws-lc" ]; then
     if [ -d "$BUILD_DIR/aws-lc/build" ] && [ -f "$BUILD_DIR/aws-lc/build/ssl/libssl.a" ]; then
         info "Detekovaný AWS-LC, QUIC/HTTP3 bude povolený..."
         QUIC_AVAILABLE=1
@@ -74,12 +87,22 @@ if [ -d "$BUILD_DIR/aws-lc" ]; then
         mkdir -p build
         cd build
         if command -v go >/dev/null 2>&1; then
-            if cmake -DCMAKE_BUILD_TYPE=Release .. && make -j$(nproc); then
+            # Dočasne vypneme ccache pre AWS-LC kvôli problémom s assemblerom
+            OLD_CC="$CC"
+            OLD_CXX="$CXX"
+            unset CC
+            unset CXX
+            info "Kompilácia AWS-LC bez ccache (pre vyhnutie sa problémom s assemblerom)..."
+            if cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON .. && make -j$(nproc); then
                 info "AWS-LC úspešne skompilovaný, povolím QUIC/HTTP3"
                 QUIC_AVAILABLE=1
             else
-                warn "Kompilácia AWS-LC zlyhala, QUIC/HTTP3 nebude povolený"
+                warn "Kompilácia AWS-LC zlyhala, QUIC/HTTP3 nebude povolený. Použijem OpenSSL."
+                info "Toto je známy problém s ccache a assemblerom v AWS-LC."
             fi
+            # Obnovíme pôvodné nastavenie
+            export CC="$OLD_CC"
+            export CXX="$OLD_CXX"
         else
             warn "Go (golang) nie je nainštalovaný, AWS-LC nemôže byť skompilovaný, QUIC/HTTP3 nebude povolený"
         fi
@@ -132,6 +155,9 @@ CONFIG_ARGS="--prefix=$INSTALL_DIR \
   --with-stream_ssl_preread_module \
   --with-google_perftools_module"
 
+# Pridanie bezpečnostných hardening opcií
+CONFIG_ARGS="$CONFIG_ARGS -DFORTIFY_SOURCE=2"
+
 # PCRE2 nastavenia
 if [ -d "$BUILD_DIR/pcre2-${PCRE2_VERSION}" ]; then
     info "Používam PCRE2 zo zdrojov..."
@@ -156,7 +182,7 @@ if [ "$QUIC_AVAILABLE" -eq 1 ]; then
     CONFIG_ARGS="$CONFIG_ARGS --with-ld-opt=\"-L$BUILD_DIR/aws-lc/build/ssl -L$BUILD_DIR/aws-lc/build/crypto\""
     
     # Pridanie ďalších QUIC nastavení
-    CONFIG_ARGS="$CONFIG_ARGS --with-cc-opt=\"-DNGX_QUIC_DEBUG_PACKETS -DNGX_QUIC_DEBUG_CRYPTO\""
+    CONFIG_ARGS="$CONFIG_ARGS --with-cc-opt=\"-DNGX_QUIC_DEBUG_PACKETS -DNGX_QUIC_DEBUG_CRYPTO -DOPENSSL_IS_AWSLC\""
 else
     # Použitie OpenSSL, ak AWS-LC nie je k dispozícii
     if [ -d "$OPENSSL_DIR" ]; then
@@ -234,6 +260,48 @@ make -j$(nproc)
 info "Inštalujem Nginx..."
 make install
 
+# Funkcia na validáciu bezpečnostných funkcií
+validate_security() {
+  local BINARY=$1
+  info "Validujem bezpečnostné funkcie pre: $BINARY"
+  
+  # Kontrola PIE/RELRO/NX
+  if command -v readelf >/dev/null 2>&1; then
+    # Kontrola PIE
+    if readelf -h "$BINARY" | grep -q "Type:[[:space:]]*EXEC"; then
+      warn "$BINARY nie je skompilovaný ako PIE (Position Independent Executable)"
+    else
+      info "$BINARY je správne skompilovaný ako PIE"
+    fi
+    
+    # Kontrola RELRO
+    if readelf -l "$BINARY" | grep -q "GNU_RELRO"; then
+      info "$BINARY má RELRO ochranu"
+    else
+      warn "$BINARY nemá RELRO ochranu"
+    fi
+    
+    # Kontrola stack canary
+    if readelf -s "$BINARY" | grep -q "__stack_chk_fail"; then
+      info "$BINARY má stack canary ochranu"
+    else
+      warn "$BINARY nemá stack canary ochranu"
+    fi
+  else
+    warn "readelf nie je k dispozícii, preskakujem validáciu bezpečnosti binárky"
+  fi
+}
+
+# Funkcia na validáciu bezpečnosti modulov
+verify_module_security() {
+  info "Verifikujem bezpečnosť dynamických modulov..."
+  for module in "$INSTALL_DIR/modules/"*.so; do
+    if [ -f "$module" ]; then
+      validate_security "$module"
+    fi
+  done
+}
+
 # Vytvorenie potrebných adresárov
 mkdir -p /var/cache/nginx/client_temp \
          /var/cache/nginx/proxy_temp \
@@ -254,6 +322,10 @@ fi
 # Nastavenie správnych práv
 chown -R nginx:nginx /var/cache/nginx
 chown -R nginx:nginx /var/log/nginx
+
+# Validácia bezpečnosti skompilovaného Nginx
+validate_security "/usr/sbin/nginx"
+verify_module_security
 
 info "Kompilácia a inštalácia Nginx bola úspešne dokončená."
 exit 0
