@@ -106,8 +106,8 @@ NGINX_LUA_PATCH=${NGINX_LUA_PATCH:-n} # Enables the set of OpenResty core patche
 FREENGINX_BACKPORT_PATCHES=${FREENGINX_BACKPORT_PATCHES:-n}
 
 # Base flags (adjust as needed, these are examples)
-BASE_CFLAGS="-O3 -flto=auto -fPIC -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2"
-BASE_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC -flto=auto -pie"
+BASE_CFLAGS="-O3 -fPIC -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2"
+BASE_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC -pie"
 
 # TLS Library selection (prioritize user's choice: AWS-LC > OpenSSL 3 > BoringSSL > System)
 USE_AWS_LC=n
@@ -115,61 +115,8 @@ USE_OPENSSL3=n
 USE_BORINGSSL=n
 USE_SYSTEM_SSL=n
 
-if [ -d "$BUILD_DIR/aws-lc" ]; then
-    # Attempt to build AWS-LC if needed
-    if [ ! -d "$BUILD_DIR/aws-lc/build" ] || [ ! -f "$BUILD_DIR/aws-lc/build/ssl/libssl.a" ]; then
-        info "AWS-LC build directory missing or incomplete, attempting to build..."
-        pushd "$BUILD_DIR/aws-lc" > /dev/null
-        mkdir -p build
-        cd build
-        if command -v go >/dev/null 2>&1; then
-            OLD_CC="$CC"; OLD_CXX="$CXX"
-            export CC=gcc CXX=g++ # Use plain compilers
-            info "Compiling AWS-LC without ccache..."
-            
-            # --- FIX: Temporarily remove ccache from PATH for AWS-LC build ---
-            ORIGINAL_PATH="$PATH"
-            PATH=$(echo "$PATH" | sed 's|/usr/lib/ccache:||g; s|:/usr/lib/ccache||g')
-            info "Temporarily adjusted PATH for AWS-LC: $PATH"
-            
-            # Ensure CFLAGS/CXXFLAGS are unset before cmake/make
-            OLD_CFLAGS="$CFLAGS"; OLD_CXXFLAGS="$CXXFLAGS"
-            unset CFLAGS CXXFLAGS
-            info "Temporarily unset CFLAGS/CXXFLAGS for AWS-LC cmake & make..."
-
-            if cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF -DCMAKE_ASM_COMPILER=/usr/bin/as ..; then
-                if make -j$(nproc); then
-                    info "AWS-LC successfully compiled."
-                    USE_AWS_LC=y
-                else
-                    warn "AWS-LC compilation failed. QUIC/HTTP3 might not be available."
-                    USE_AWS_LC=n
-                fi
-            else
-                 warn "AWS-LC cmake failed."
-                 USE_AWS_LC=n
-            fi
-            
-            # Restore original PATH, CFLAGS, CXXFLAGS
-            export PATH="$ORIGINAL_PATH"
-            export CFLAGS="$OLD_CFLAGS" CXXFLAGS="$OLD_CXXFLAGS"
-            info "Restored PATH to: $PATH"
-            info "Restored CFLAGS/CXXFLAGS to: $CFLAGS / $CXXFLAGS"
-            # --- END FIX ---
-
-            # Restore original CC/CXX
-            export CC="$OLD_CC" CXX="$OLD_CXX"
-            info "Restored CC/CXX to: $CC / $CXX"
-        else
-            warn "Go (golang) not installed, cannot compile AWS-LC."
-            USE_AWS_LC=n # Cannot use if Go is missing
-        fi
-        popd > /dev/null
-    else
-        info "Using pre-built AWS-LC."
-        USE_AWS_LC=y
-    fi
-elif [ -d "$BUILD_DIR/$OPENSSL_VERSION" ]; then
+# Check OpenSSL next
+if [ -d "$BUILD_DIR/$OPENSSL_VERSION" ]; then
     info "Using OpenSSL 3.x from $BUILD_DIR/$OPENSSL_VERSION"
     USE_OPENSSL3=y
 elif [ -d "$BUILD_DIR/boringssl" ]; then
@@ -275,25 +222,27 @@ generate_nginx_config_args() {
     local openssl_opt="enable-tls1_3 no-weak-ssl-ciphers enable-ec_nistp_64_gcc_128 -DOPENSSL_NO_HEARTBEATS"
     if [[ "$USE_AWS_LC" = [yY] ]]; then
         info "Configuring with AWS-LC..."
-        args="$args --with-openssl=$BUILD_DIR/aws-lc"
-        args="$args --with-http_v3_module"
-        cc_opts="$cc_opts -I$BUILD_DIR/aws-lc/include -DOPENSSL_IS_AWSLC"
-        ld_opts="$ld_opts -L$BUILD_DIR/aws-lc/build/ssl -L$BUILD_DIR/aws-lc/build/crypto"
+        warn "AWS-LC usage was requested but is disabled, falling back..."
+    fi
+    
+    # Use BoringSSL if available (PRIORITY)
+    if [[ "$USE_BORINGSSL" = [yY] ]]; then
+        info "Configuring with BoringSSL..."
+        args="$args --with-openssl=$BUILD_DIR/boringssl"
+        args="$args --with-http_v3_module" # Keep v3 for BoringSSL
+        cc_opts="$cc_opts -I$BUILD_DIR/boringssl/include"
+        ld_opts="$ld_opts -L$BUILD_DIR/boringssl/build/ssl -L$BUILD_DIR/boringssl/build/crypto"
+    # Use OpenSSL 3 if available and BoringSSL is not
     elif [[ "$USE_OPENSSL3" = [yY] ]]; then
         info "Configuring with OpenSSL 3.x..."
         args="$args --with-openssl=$BUILD_DIR/$OPENSSL_VERSION"
         args="$args --with-openssl-opt='$openssl_opt'"
         cc_opts="$cc_opts -I/usr/local/ssl/include"
         ld_opts="$ld_opts -L/usr/local/ssl/lib -L/usr/local/ssl/lib64"
-    elif [[ "$USE_BORINGSSL" = [yY] ]]; then
-        info "Configuring with BoringSSL..."
-        args="$args --with-openssl=$BUILD_DIR/boringssl"
-        args="$args --with-http_v3_module"
-        cc_opts="$cc_opts -I$BUILD_DIR/boringssl/include"
-        ld_opts="$ld_opts -L$BUILD_DIR/boringssl/build/ssl -L$BUILD_DIR/boringssl/build/crypto"
+    # Fallback to system OpenSSL
     elif [[ "$USE_SYSTEM_SSL" = [yY] ]]; then
         info "Configuring with system OpenSSL..."
-        args="$args --with-openssl=auto" # Nginx doesn't have a direct --with-openssl flag, relies on system find
+        args="$args --with-openssl=auto"
     fi
     # Always include SSL module if selected
     [[ "$NGINX_SSL" = [yY] ]] && args="$args --with-http_ssl_module"
@@ -373,9 +322,9 @@ generate_nginx_config_args() {
     args="$args --with-ld-opt='$ld_opts'"
 
     # OpenSSL specific build options (only if using OpenSSL 3)
-    if [[ "$USE_OPENSSL3" = [yY] ]]; then
-         args="$args --with-openssl-opt='$openssl_opt'"
-    fi
+    # if [[ "$USE_OPENSSL3" = [yY] ]]; then # REMOVED - No longer needed as BoringSSL is priority
+    #      args="$args --with-openssl-opt='$openssl_opt'" 
+    # fi
 
     echo "$args"
 }

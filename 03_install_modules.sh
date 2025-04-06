@@ -120,44 +120,10 @@ else
     info "YAJL už je nainštalovaný, pokračujem ďalej..."
 fi
 
-# Kompilácia AWS-LC pre podporu QUIC/HTTP3
-info "Kompilujem AWS-LC pre podporu QUIC/HTTP3..."
-if [ -d "aws-lc" ]; then
-    cd aws-lc
-    mkdir -p build
-    cd build
-    if command -v go >/dev/null 2>&1; then
-        info "Go (golang) nájdený, pokračujem v kompilácii AWS-LC..."
-        # --- FIX: Consistent ccache workaround ---
-        OLD_CC="$CC"; OLD_CXX="$CXX" # Save original ccache vars
-        export CC=gcc CXX=g++ # Use plain compilers
-        info "Temporarily disabling ccache for AWS-LC cmake & make..."
-
-        AWS_LC_COMPILED=0
-        if cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 .. && \
-           make -j$(nproc); then
-            info "AWS-LC úspešne skompilovaný"
-            export AWS_LC_PATH="$BUILD_DIR/aws-lc" # Export path only on success
-            AWS_LC_COMPILED=1
-        else
-            warn "Kompilácia AWS-LC zlyhala, QUIC/HTTP3 nemusí fungovať správne"
-        fi
-
-        # Restore original CC/CXX
-        export CC="$OLD_CC" CXX="$OLD_CXX"
-        info "Restored CC/CXX to: $CC / $CXX"
-        # --- END FIX ---
-    else
-        warn "Go (golang) nie je nainštalovaný, AWS-LC nemôže byť skompilovaný, QUIC/HTTP3 nebude dostupný"
-    fi
-    cd ../..
-else
-    warn "AWS-LC adresár neexistuje, QUIC/HTTP3 nemusí fungovať správne..."
-fi
-
 # Kompilácia OpenSSL 3.x ako zálohu
 # Use AWS_LC_COMPILED flag to decide if OpenSSL is needed
-if [ "$AWS_LC_COMPILED" -ne 1 ] && [ -d "$OPENSSL_VERSION" ]; then
+AWS_LC_COMPILED=0 # Force OpenSSL build since AWS-LC is disabled
+if [ "$AWS_LC_COMPILED" -ne 1 ] && [ -d "$OPENSSL_VERSION" ] && [ ! -d "boringssl" ]; then # Only build if BoringSSL isn't present
     info "Kompilujem OpenSSL 3.x..."
     cd $OPENSSL_VERSION
     ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl shared zlib enable-ktls enable-ec_nistp_64_gcc_128 -DTCP_FASTOPEN=23 -fstack-protector-strong -O3
@@ -167,14 +133,33 @@ if [ "$AWS_LC_COMPILED" -ne 1 ] && [ -d "$OPENSSL_VERSION" ]; then
     export OPENSSL_DIR="$BUILD_DIR/$OPENSSL_VERSION"
 fi
 
-# Kompilácia BoringSSL ako zálohu
-if [ ! -d "aws-lc" ] && [ ! -d "$OPENSSL_VERSION" ] && [ -d "boringssl" ]; then
+# Kompilácia BoringSSL (enabled)
+if [ -d "boringssl" ]; then
     info "Kompilujem BoringSSL..."
     cd boringssl
     mkdir -p build
     cd build
-    cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 ..
-    make -j$(nproc)
+    # --- FIX: Temporarily remove ccache from PATH for BoringSSL build ---
+    ORIGINAL_PATH="$PATH"
+    PATH=$(echo "$PATH" | sed 's|/usr/lib/ccache:||g; s|:/usr/lib/ccache||g')
+    info "Temporarily adjusted PATH for BoringSSL: $PATH"
+    OLD_CFLAGS="$CFLAGS"; OLD_CXXFLAGS="$CXXFLAGS"
+    unset CFLAGS CXXFLAGS
+    info "Temporarily unset CFLAGS/CXXFLAGS for BoringSSL cmake & make..."
+
+    if cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 .. && \
+       make -j$(nproc); then
+       info "BoringSSL compiled successfully."
+    else
+        warn "BoringSSL compilation failed."
+    fi
+
+    # Restore original PATH, CFLAGS, CXXFLAGS
+    export PATH="$ORIGINAL_PATH"
+    export CFLAGS="$OLD_CFLAGS" CXXFLAGS="$OLD_CXXFLAGS"
+    info "Restored PATH to: $PATH"
+    info "Restored CFLAGS/CXXFLAGS to: $CFLAGS / $CXXFLAGS"
+    # --- END FIX ---
     cd ../..
     export BORINGSSL_PATH="$BUILD_DIR/boringssl"
 fi
@@ -213,7 +198,7 @@ cd ..
 if [ -d "ngx_small_light" ]; then
     info "Inštalujem ngx_small_light závislosti..."
     cd ngx_small_light
-    ./setup
+    # ./setup # Commented out due to MagickWand dependency issues
     cd ..
 fi
 
