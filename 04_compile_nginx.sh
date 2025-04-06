@@ -106,8 +106,8 @@ NGINX_LUA_PATCH=${NGINX_LUA_PATCH:-n} # Enables the set of OpenResty core patche
 FREENGINX_BACKPORT_PATCHES=${FREENGINX_BACKPORT_PATCHES:-n}
 
 # Base flags (adjust as needed, these are examples)
-BASE_CFLAGS="-O3 -fPIC -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2"
-BASE_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC -pie"
+BASE_CFLAGS="-O3 -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2"
+BASE_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -pie"
 
 # TLS Library selection (prioritize user's choice: AWS-LC > OpenSSL 3 > BoringSSL > System)
 USE_AWS_LC=n
