@@ -72,33 +72,46 @@ case $OS in
             yum install -y epel-release
             yum groupinstall -y 'Development Tools'
             yum install -y git wget curl ccache pcre pcre-devel zlib zlib-devel openssl-devel \
-              GeoIP-devel libxslt-devel libxml2-devel gd-devel perl-devel lmdb-devel \
-              libcurl-devel automake libtool autoconf yajl-devel pkgconfig doxygen \
+              libmaxminddb-devel libxslt-devel libxml2-devel gd-devel perl-devel lmdb \
+              libcurl-devel automake libtool autoconf libyaml-devel pkgconfig doxygen \
               cmake gcc-c++ python3 bison flex libpng-devel libjpeg-devel libuuid-devel libicu-devel \
               gperftools gperftools-devel libunwind-devel pam-devel tbb-devel \
               luajit-devel lua lua-devel mhash-devel expat-devel jemalloc-devel \
-              hiredis-devel libmaxminddb-devel libsodium-devel cjson-devel \
+              hiredis-devel libmaxminddb libsodium-devel cjson-devel \
               pcre2-devel libcap-devel elfutils-libelf-devel rust cargo \
-              zstd zstd-devel brotli-devel autoconf automake libtool bc
+              zstd libzstd-devel brotli-devel autoconf automake libtool bc
         else
             dnf install -y epel-release
+            
+            # Povoliť CRB repozitár (CodeReady Builder pre Rocky/AlmaLinux)
+            if [ "$OS" = "rocky" ] || [ "$OS" = "almalinux" ]; then
+                info "Povoľujem CRB repozitár pre $OS..."
+                dnf config-manager --set-enabled crb || :
+                # Alternatívny spôsob povolenia PowerTools/CRB pre staršie verzie
+                if [ "$VERSION" -lt 9 ]; then
+                    dnf config-manager --set-enabled powertools || :
+                fi
+            fi
+            
             dnf groupinstall -y 'Development Tools'
             dnf install -y git wget curl ccache pcre pcre-devel zlib zlib-devel openssl-devel \
-              GeoIP-devel libxslt-devel libxml2-devel gd-devel perl-devel lmdb-devel \
-              libcurl-devel automake libtool autoconf yajl-devel pkgconf doxygen \
+              libmaxminddb libxslt-devel libxml2-devel gd-devel perl-devel lmdb \
+              libcurl-devel automake libtool autoconf libyaml-devel pkgconf doxygen \
               cmake gcc-c++ python3 bison flex libpng-devel libjpeg-devel libuuid-devel libicu-devel \
-              gperftools gperftools-devel libunwind-devel pam-devel tbb-devel \
-              luajit-devel lua lua-devel mhash-devel expat-devel jemalloc-devel \
-              hiredis-devel libmaxminddb-devel libsodium-devel cjson-devel \
+              gperftools gperftools-devel pam-devel \
+              luajit lua lua-devel expat-devel jemalloc-devel \
               pcre2-devel libcap-devel elfutils-libelf-devel rust cargo \
-              zstd zstd-devel brotli-devel autoconf automake libtool bc
+              zstd libzstd-devel brotli-devel autoconf automake libtool bc
               
+            # Pokus o inštaláciu dodatočných závislostí, ignorovanie chýb
+            dnf install -y libunwind-devel tbb-devel hiredis-devel libsodium-devel cjson-devel || :
+            
             # Kontrola verzie OpenSSL
             if [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "rocky" ] || [ "$OS" = "almalinux" ]; then
                 if openssl version | grep -q "OpenSSL 1"; then
                     info "Detekovaná OpenSSL verzia 1.x, pokúšam sa aktualizovať na OpenSSL 3.x..."
                     if [ "$OS" = "centos" ] && [ "$VERSION" -ge 8 ]; then
-                        dnf -y --enablerepo=powertools install openssl11 openssl11-devel
+                        dnf -y --enablerepo=powertools install openssl11 openssl11-devel || :
                     else
                         # Pre RHEL/Rocky/AlmaLinux
                         dnf -y module enable openssl
