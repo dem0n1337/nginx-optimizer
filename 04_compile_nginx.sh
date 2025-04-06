@@ -254,9 +254,6 @@ generate_nginx_config_args() {
         "$BUILD_DIR/nginx-module-vts"
         "$BUILD_DIR/redis2-nginx-module"
         "$BUILD_DIR/nginx-rtmp-module"
-        "$BUILD_DIR/ngx_http_geoip2_module"
-        # "$BUILD_DIR/lua-nginx-module" # REMOVED
-        # "$BUILD_DIR/ngx_devel_kit" # REMOVED - Required by Lua
         "$BUILD_DIR/ngx_http_substitutions_filter_module"
         "$BUILD_DIR/ngx_dynamic_upstream"
         "$BUILD_DIR/ngx_http_auth_pam_module"
