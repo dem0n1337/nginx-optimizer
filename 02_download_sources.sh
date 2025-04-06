@@ -161,7 +161,12 @@ else
 fi
 
 # Dynamic Upstream Module
-git clone --depth 1 https://github.com/api7/ngx_dynamic_upstream.git
+info "Sťahujem Dynamic Upstream Module..."
+git clone --depth 1 https://github.com/api7/ngx_dynamic_upstream.git || {
+    warn "ngx_dynamic_upstream nie je dostupný, skúšam alternatívny zdroj..."
+    # Alternatívny zdroj pre Dynamic Upstream Module
+    git clone --depth 1 https://github.com/vozlt/nginx-dynamic-upstream.git ngx_dynamic_upstream || warn "Nepodarilo sa stiahnuť Dynamic Upstream Module, preskakujem..."
+}
 
 # HTTP Auth PAM Module
 git clone --depth 1 https://github.com/sto/ngx_http_auth_pam_module.git
