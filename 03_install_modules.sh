@@ -124,6 +124,13 @@ fi
 if [ -d "$BUILD_DIR/ModSecurity" ]; then
     info "Kompilujem libmodsecurity..."
     cd $BUILD_DIR/ModSecurity
+
+    # --- FIX: Configure Git Identity ---
+    info "Temporarily configuring Git identity for ModSecurity build..."
+    git config user.email "jakub@demovic.net"
+    git config user.name "dem0n1337"
+    # --- END FIX ---
+
     git submodule init
     git submodule update
     
@@ -135,7 +142,9 @@ if [ -d "$BUILD_DIR/ModSecurity" ]; then
     
     # Špeciálna konfigurácia s podporou pre YAJL
     export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib64:/usr/local/lib"
-    ./configure --with-pcre=/usr/bin/pcre-config --with-lmdb=/usr --with-yajl=/usr --with-curl --enable-json-logging
+    # --- FIX: Explicit YAJL Path --- 
+    ./configure --with-pcre=/usr/bin/pcre-config --with-lmdb=/usr --with-yajl=/usr/local --with-curl --enable-json-logging || error "ModSecurity configuration failed"
+    # --- END FIX ---
     make -j$(nproc)
     make install
     cd $BUILD_DIR
@@ -149,21 +158,25 @@ if [ -d "aws-lc" ]; then
     cd build
     if command -v go >/dev/null 2>&1; then
         info "Go (golang) nájdený, pokračujem v kompilácii AWS-LC..."
-        # Uložíme pôvodné nastavenie CC a CXX
-        OLD_CC="$CC"
-        OLD_CXX="$CXX"
-        # Dočasne vypneme ccache pre AWS-LC
-        unset CC
-        unset CXX
-        if cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 .. && make -j$(nproc); then
+        # --- FIX: Consistent ccache workaround ---
+        OLD_CC="$CC"; OLD_CXX="$CXX" # Save original ccache vars
+        export CC=gcc CXX=g++ # Use plain compilers
+        info "Temporarily disabling ccache for AWS-LC cmake & make..."
+
+        AWS_LC_COMPILED=0
+        if cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 .. && \
+           make -j$(nproc); then
             info "AWS-LC úspešne skompilovaný"
-            export AWS_LC_PATH="$BUILD_DIR/aws-lc"
+            export AWS_LC_PATH="$BUILD_DIR/aws-lc" # Export path only on success
+            AWS_LC_COMPILED=1
         else
             warn "Kompilácia AWS-LC zlyhala, QUIC/HTTP3 nemusí fungovať správne"
         fi
-        # Obnovíme pôvodné nastavenie CC a CXX
-        export CC="$OLD_CC"
-        export CXX="$OLD_CXX"
+
+        # Restore original CC/CXX
+        export CC="$OLD_CC" CXX="$OLD_CXX"
+        info "Restored CC/CXX to: $CC / $CXX"
+        # --- END FIX ---
     else
         warn "Go (golang) nie je nainštalovaný, AWS-LC nemôže byť skompilovaný, QUIC/HTTP3 nebude dostupný"
     fi
@@ -173,7 +186,8 @@ else
 fi
 
 # Kompilácia OpenSSL 3.x ako zálohu
-if [ ! -d "aws-lc" ] && [ -d "$OPENSSL_VERSION" ]; then
+# Use AWS_LC_COMPILED flag to decide if OpenSSL is needed
+if [ "$AWS_LC_COMPILED" -ne 1 ] && [ -d "$OPENSSL_VERSION" ]; then
     info "Kompilujem OpenSSL 3.x..."
     cd $OPENSSL_VERSION
     ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl shared zlib enable-ktls enable-ec_nistp_64_gcc_128 -DTCP_FASTOPEN=23 -fstack-protector-strong -O3

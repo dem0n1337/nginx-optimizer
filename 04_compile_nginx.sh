@@ -105,6 +105,10 @@ NGINX_LUA_STREAM_PATCH=${NGINX_LUA_STREAM_PATCH:-n}
 NGINX_LUA_PATCH=${NGINX_LUA_PATCH:-n} # Enables the set of OpenResty core patches for 1.27.0
 FREENGINX_BACKPORT_PATCHES=${FREENGINX_BACKPORT_PATCHES:-n}
 
+# Base flags (adjust as needed, these are examples)
+BASE_CFLAGS="-O3 -march=native -mtune=native -fstack-protector-strong -flto=auto -fPIC -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2"
+BASE_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC -flto=auto -pie"
+
 # TLS Library selection (prioritize user's choice: AWS-LC > OpenSSL 3 > BoringSSL > System)
 USE_AWS_LC=n
 USE_OPENSSL3=n
@@ -120,19 +124,22 @@ if [ -d "$BUILD_DIR/aws-lc" ]; then
         cd build
         if command -v go >/dev/null 2>&1; then
             OLD_CC="$CC"; OLD_CXX="$CXX"
-            # Temporarily disable ccache for AWS-LC build due to potential assembler issues
-            export CC=gcc; export CXX=g++
+            export CC=gcc CXX=g++ # Use plain compilers
             info "Compiling AWS-LC without ccache..."
-            if cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF .. && make -j$(nproc); then
+
+            if cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF .. && \
+               make -j$(nproc); then
                 info "AWS-LC successfully compiled."
                 USE_AWS_LC=y
             else
                 warn "AWS-LC compilation failed. QUIC/HTTP3 might not be available."
+                USE_AWS_LC=n 
             fi
-            # Restore original CC/CXX
-            export CC="$OLD_CC"; export CXX="$OLD_CXX"
+            export CC="$OLD_CC" CXX="$OLD_CXX"
+            info "Restored CC/CXX to: $CC / $CXX"
         else
             warn "Go (golang) not installed, cannot compile AWS-LC."
+            USE_AWS_LC=n # Cannot use if Go is missing
         fi
         popd > /dev/null
     else
@@ -153,8 +160,8 @@ fi
 # Function to generate Nginx configure arguments dynamically
 generate_nginx_config_args() {
     local args=""
-    local cc_opts=""
-    local ld_opts=""
+    local cc_opts="$BASE_CFLAGS"
+    local ld_opts="$BASE_LDFLAGS"
 
     # --- Basic Paths and User ---
     args="$args --prefix=$INSTALL_DIR"
@@ -221,7 +228,7 @@ generate_nginx_config_args() {
     if [ -d "$BUILD_DIR/pcre2-${PCRE2_VERSION}" ]; then
         args="$args --with-pcre=$BUILD_DIR/pcre2-${PCRE2_VERSION}"
         [[ "$NGINX_PCRE_JIT" = [yY] ]] && args="$args --with-pcre-jit"
-        cc_opts="$cc_opts -I/usr/local/pcre2/include" # Assume install prefix from 03_install_modules.sh
+        cc_opts="$cc_opts -I/usr/local/pcre2/include"
         ld_opts="$ld_opts -L/usr/local/pcre2/lib"
     else
         # Fallback to system PCRE (may lack JIT)
@@ -234,7 +241,7 @@ generate_nginx_config_args() {
     if [ -d "$BUILD_DIR/zlib-cloudflare" ]; then
         args="$args --with-zlib=$BUILD_DIR/zlib-cloudflare"
         [[ "$NGINX_ZLIB_OPTIMIZE" = [yY] ]] && args="$args --with-zlib-opt=-O3"
-        cc_opts="$cc_opts -I/usr/local/zlib-cf/include" # Assume install prefix from 03_install_modules.sh
+        cc_opts="$cc_opts -I/usr/local/zlib-cf/include"
         ld_opts="$ld_opts -L/usr/local/zlib-cf/lib"
     else
         warn "Using system zlib."
@@ -242,48 +249,35 @@ generate_nginx_config_args() {
     fi
 
     # TLS Library
-    local openssl_opt="enable-tls1_3 no-weak-ssl-ciphers enable-ec_nistp_64_gcc_128 -DOPENSSL_NO_HEARTBEATS" # Your desired opts
+    local openssl_opt="enable-tls1_3 no-weak-ssl-ciphers enable-ec_nistp_64_gcc_128 -DOPENSSL_NO_HEARTBEATS"
     if [[ "$USE_AWS_LC" = [yY] ]]; then
         info "Configuring with AWS-LC..."
         args="$args --with-openssl=$BUILD_DIR/aws-lc"
-        args="$args --with-http_v3_module" # Enable HTTP/3
-        cc_opts="$cc_opts -I$BUILD_DIR/aws-lc/include -DOPENSSL_IS_AWSLC" # Add AWS-LC include path and flag
-        # Add specific QUIC debug flags if needed (as in original script)
-        # cc_opts="$cc_opts -DNGX_QUIC_DEBUG_PACKETS -DNGX_QUIC_DEBUG_CRYPTO"
+        args="$args --with-http_v3_module"
+        cc_opts="$cc_opts -I$BUILD_DIR/aws-lc/include -DOPENSSL_IS_AWSLC"
         ld_opts="$ld_opts -L$BUILD_DIR/aws-lc/build/ssl -L$BUILD_DIR/aws-lc/build/crypto"
-        # AWS-LC might have its own way of setting options, '--with-openssl-opt' might not apply directly
-        # args="$args --with-openssl-opt=\"$openssl_opt\"" # Re-check if this applies to AWS-LC builds
     elif [[ "$USE_OPENSSL3" = [yY] ]]; then
         info "Configuring with OpenSSL 3.x..."
         args="$args --with-openssl=$BUILD_DIR/$OPENSSL_VERSION"
-        args="$args --with-openssl-opt=\"$openssl_opt\""
-        # Potentially add HTTP/3 if OpenSSL 3 build supports QUIC (check specific OpenSSL config)
-        # args="$args --with-http_v3_module"
-        # Add OpenSSL 3 include/lib paths if needed (if installed to non-standard location)
+        args="$args --with-openssl-opt='$openssl_opt'"
         cc_opts="$cc_opts -I/usr/local/ssl/include"
         ld_opts="$ld_opts -L/usr/local/ssl/lib -L/usr/local/ssl/lib64"
     elif [[ "$USE_BORINGSSL" = [yY] ]]; then
         info "Configuring with BoringSSL..."
         args="$args --with-openssl=$BUILD_DIR/boringssl"
-        args="$args --with-http_v3_module" # BoringSSL typically supports QUIC
-        # args="$args --with-openssl-opt=\"$openssl_opt\"" # BoringSSL doesn't use this opt flag
-        # Add BoringSSL include/lib paths
+        args="$args --with-http_v3_module"
         cc_opts="$cc_opts -I$BUILD_DIR/boringssl/include"
         ld_opts="$ld_opts -L$BUILD_DIR/boringssl/build/ssl -L$BUILD_DIR/boringssl/build/crypto"
     elif [[ "$USE_SYSTEM_SSL" = [yY] ]]; then
         info "Configuring with system OpenSSL..."
-        # System OpenSSL might not support HTTP/3 or all desired opts
         args="$args --with-openssl=auto" # Nginx doesn't have a direct --with-openssl flag, relies on system find
-        # args="$args --with-openssl-opt=\"$openssl_opt\"" # May or may not work depending on system OpenSSL
     fi
     # Always include SSL module if selected
     [[ "$NGINX_SSL" = [yY] ]] && args="$args --with-http_ssl_module"
 
-
     # Jemalloc & Libatomic
     [[ "$NGINX_JEMALLOC" = [yY] ]] && ld_opts="$ld_opts -ljemalloc"
     [[ "$NGINX_LIBATOMIC" = [yY] ]] && ld_opts="$ld_opts -latomic"
-
 
     # --- Third-Party Modules ---
     MODULES_STATIC=( # Modules typically built statically in CentminMod if enabled
@@ -336,43 +330,7 @@ generate_nginx_config_args() {
         fi
     done
 
-    # --- Compiler and Linker Flags ---
-    # Start with user's desired CFLAGS/CXXFLAGS/LDFLAGS structure
-    local base_cflags=\"-O3 -march=native -mtune=native -fstack-protector-strong -flto=auto -fPIC -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2\"
-    local base_ldflags=\"-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC -flto=auto -pie\"
-
-    cc_opts="$base_cflags"
-    ld_opts="$base_ldflags"
-
-    # Add include paths based on selected libraries
-    # PCRE2
-    if [ -d "$BUILD_DIR/pcre2-${PCRE2_VERSION}" ]; then
-        cc_opts="$cc_opts -I/usr/local/pcre2/include"
-        ld_opts="$ld_opts -L/usr/local/pcre2/lib"
-    fi
-    # Zlib-CF
-    if [ -d "$BUILD_DIR/zlib-cloudflare" ]; then
-        cc_opts="$cc_opts -I/usr/local/zlib-cf/include"
-        ld_opts="$ld_opts -L/usr/local/zlib-cf/lib"
-    fi
-    # AWS-LC
-    if [[ "$USE_AWS_LC" = [yY] ]]; then
-        cc_opts="$cc_opts -I$BUILD_DIR/aws-lc/include -DOPENSSL_IS_AWSLC"
-        ld_opts="$ld_opts -L$BUILD_DIR/aws-lc/build/ssl -L$BUILD_DIR/aws-lc/build/crypto"
-    fi
-    # OpenSSL 3
-    if [[ "$USE_OPENSSL3" = [yY] ]]; then
-        # Assuming OpenSSL was installed to /usr/local/ssl by 03_install_modules.sh
-        cc_opts="$cc_opts -I/usr/local/ssl/include"
-        # Adjust lib path if needed (e.g., lib64)
-        ld_opts="$ld_opts -L/usr/local/ssl/lib -L/usr/local/ssl/lib64"
-    fi
-    # BoringSSL
-    if [[ "$USE_BORINGSSL" = [yY] ]]; then
-        cc_opts="$cc_opts -I$BUILD_DIR/boringssl/include"
-        ld_opts="$ld_opts -L$BUILD_DIR/boringssl/build/ssl -L$BUILD_DIR/boringssl/build/crypto"
-    fi
-    # System includes (add last as fallback)
+    # --- Compiler and Linker Flags Finalization ---
     cc_opts="$cc_opts -I/usr/local/include -I/usr/include"
     ld_opts="$ld_opts -L/usr/local/lib"
 
@@ -380,23 +338,20 @@ generate_nginx_config_args() {
     cc_opts="$cc_opts -I$LUAJIT_INC"
     ld_opts="$ld_opts -L$LUAJIT_LIB"
 
-    # Add libraries to link against
-    ld_opts="$ld_opts -ljemalloc -lpcre -lssl -lcrypto -ldl -lz"
+    # Add standard libraries to link against (ensure space separation)
+    ld_opts="$ld_opts -lpcre -lssl -lcrypto -ldl -lz"
     [[ "$NGINX_LIBATOMIC" = [yY] ]] && ld_opts="$ld_opts -latomic"
-    # Add PCRE2 if using local build (might be needed explicitly)
+    # Add PCRE2 if using local build
     if [ -d "$BUILD_DIR/pcre2-${PCRE2_VERSION}" ]; then
       ld_opts="$ld_opts -lpcre2-8"
     fi
-    # Add other libraries if needed (e.g., -luuid, -licuuc, etc based on enabled modules)
 
-    # Combine flags
-    args="$args --with-cc-opt=\"$cc_opts\""
-    args="$args --with-ld-opt=\"$ld_opts\""
+    args="$args --with-cc-opt='$cc_opts'"
+    args="$args --with-ld-opt='$ld_opts'"
 
     # OpenSSL specific build options (only if using OpenSSL 3)
     if [[ "$USE_OPENSSL3" = [yY] ]]; then
-         local openssl_opt="enable-tls1_3 no-weak-ssl-ciphers enable-ec_nistp_64_gcc_128 -DOPENSSL_NO_HEARTBEATS" # Your desired opts
-         args="$args --with-openssl-opt=\"$openssl_opt\""
+         args="$args --with-openssl-opt='$openssl_opt'"
     fi
 
     echo "$args"
@@ -627,14 +582,14 @@ apply_nginx_patches
 
 # --- END ADDED/MODIFIED PATCHING LOGIC ---
 
-
 # Generate config args dynamically
 CONFIG_ARGS=$(generate_nginx_config_args)
 
 # Spustenie konfigurácie
 info "Spúšťam ./configure ..."
-# Use eval to handle quotes within the args string properly
-eval "./configure $CONFIG_ARGS" || error "Konfigurácia Nginx zlyhala!"
+# Log the command for debugging
+info "Running: ./configure $CONFIG_ARGS"
+./configure $CONFIG_ARGS || error "Konfigurácia Nginx zlyhala!"
 
 # Kompilácia s paralelizáciou
 info "Kompilujem Nginx s ${YELLOW}$(nproc)${NC} vláknami..."
