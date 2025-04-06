@@ -106,8 +106,7 @@ NGINX_LUA_PATCH=${NGINX_LUA_PATCH:-n} # Enables the set of OpenResty core patche
 FREENGINX_BACKPORT_PATCHES=${FREENGINX_BACKPORT_PATCHES:-n}
 
 # Base flags (adjust as needed, these are examples)
-BASE_CFLAGS="-O3 -fcode-hoisting -DFORTIFY_SOURCE=2"
-BASE_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -pie"
+BASE_CFLAGS="-O3"
 
 # TLS Library selection (prioritize user's choice: AWS-LC > OpenSSL 3 > BoringSSL > System)
 USE_AWS_LC=n
@@ -131,7 +130,6 @@ fi
 generate_nginx_config_args() {
     local args=""
     local cc_opts="$BASE_CFLAGS"
-    local ld_opts="$BASE_LDFLAGS"
 
     # --- Basic Paths and User ---
     args="$args --prefix=$INSTALL_DIR"
@@ -199,7 +197,6 @@ generate_nginx_config_args() {
         args="$args --with-pcre=$BUILD_DIR/pcre2-${PCRE2_VERSION}"
         [[ "$NGINX_PCRE_JIT" = [yY] ]] && args="$args --with-pcre-jit"
         cc_opts="$cc_opts -I/usr/local/pcre2/include"
-        ld_opts="$ld_opts -L/usr/local/pcre2/lib"
     else
         # Fallback to system PCRE (may lack JIT)
         warn "Using system PCRE. JIT support may be unavailable."
@@ -212,7 +209,6 @@ generate_nginx_config_args() {
         args="$args --with-zlib=$BUILD_DIR/zlib-cloudflare"
         [[ "$NGINX_ZLIB_OPTIMIZE" = [yY] ]] && args="$args --with-zlib-opt=-O3"
         cc_opts="$cc_opts -I/usr/local/zlib-cf/include"
-        ld_opts="$ld_opts -L/usr/local/zlib-cf/lib"
     else
         warn "Using system zlib."
         args="$args --with-zlib=auto" # Nginx doesn't have a direct --with-zlib flag, relies on system find
@@ -231,14 +227,12 @@ generate_nginx_config_args() {
         args="$args --with-openssl=$BUILD_DIR/boringssl"
         args="$args --with-http_v3_module" # Keep v3 for BoringSSL
         cc_opts="$cc_opts -I$BUILD_DIR/boringssl/include"
-        ld_opts="$ld_opts -L$BUILD_DIR/boringssl/build/ssl -L$BUILD_DIR/boringssl/build/crypto"
     # Use OpenSSL 3 if available and BoringSSL is not
     elif [[ "$USE_OPENSSL3" = [yY] ]]; then
         info "Configuring with OpenSSL 3.x..."
         args="$args --with-openssl=$BUILD_DIR/$OPENSSL_VERSION"
         args="$args --with-openssl-opt='$openssl_opt'"
         cc_opts="$cc_opts -I/usr/local/ssl/include"
-        ld_opts="$ld_opts -L/usr/local/ssl/lib -L/usr/local/ssl/lib64"
     # Fallback to system OpenSSL
     elif [[ "$USE_SYSTEM_SSL" = [yY] ]]; then
         info "Configuring with system OpenSSL..."
@@ -246,10 +240,6 @@ generate_nginx_config_args() {
     fi
     # Always include SSL module if selected
     [[ "$NGINX_SSL" = [yY] ]] && args="$args --with-http_ssl_module"
-
-    # Jemalloc & Libatomic
-    [[ "$NGINX_JEMALLOC" = [yY] ]] && ld_opts="$ld_opts -ljemalloc"
-    [[ "$NGINX_LIBATOMIC" = [yY] ]] && ld_opts="$ld_opts -latomic"
 
     # --- Third-Party Modules ---
     MODULES_STATIC=( # Modules typically built statically in CentminMod if enabled
@@ -303,8 +293,7 @@ generate_nginx_config_args() {
     done
 
     # --- Compiler and Linker Flags Finalization ---
-    cc_opts="$cc_opts -I/usr/local/include -I/usr/include"
-    ld_opts="$ld_opts -L/usr/local/lib"
+    cc_opts="$BASE_CFLAGS $cc_opts -I/usr/local/include -I/usr/include"
 
     # Add LuaJIT paths
     # cc_opts="$cc_opts -I$LUAJIT_INC" # REMOVED
@@ -319,12 +308,6 @@ generate_nginx_config_args() {
     fi
 
     args="$args --with-cc-opt='$cc_opts'"
-    args="$args --with-ld-opt='$ld_opts'"
-
-    # OpenSSL specific build options (only if using OpenSSL 3)
-    # if [[ "$USE_OPENSSL3" = [yY] ]]; then # REMOVED - No longer needed as BoringSSL is priority
-    #      args="$args --with-openssl-opt='$openssl_opt'" 
-    # fi
 
     echo "$args"
 }
