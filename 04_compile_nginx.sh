@@ -294,23 +294,7 @@ generate_nginx_config_args() {
     done
 
     # --- Compiler and Linker Flags Finalization ---
-    # Combine necessary includes
-    cc_opts="$cc_opts -I/usr/local/include -I/usr/include"
-
-    # Add LuaJIT paths
-    # cc_opts="$cc_opts -I$LUAJIT_INC" # REMOVED
-    # ld_opts="$ld_opts -L$LUAJIT_LIB" # REMOVED
-
-    # Add standard libraries to link against (ensure space separation)
-    ld_opts="$ld_opts -lpcre -lssl -lcrypto -ldl -lz"
-    [[ "$NGINX_LIBATOMIC" = [yY] ]] && ld_opts="$ld_opts -latomic"
-    # Add PCRE2 if using local build
-    if [ -d "$BUILD_DIR/pcre2-${PCRE2_VERSION}" ]; then
-      ld_opts="$ld_opts -lpcre2-8"
-    fi
-
-    args="$args --with-cc-opt='$cc_opts'"
-    # args="$args --with-ld-opt='$ld_opts'" # REMOVED - Let Nginx handle linker flags
+    # No longer explicitly adding cc_opts or ld_opts; relying on --with flags
 
     echo "$args"
 }
