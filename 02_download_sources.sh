@@ -253,10 +253,17 @@ if [ -d "ngx_dynamic_upstream" ]; then
     warn "ngx_dynamic_upstream už existuje, preskakujem sťahovanie..."
 else
     info "Sťahujem Dynamic Upstream Module..."
-    git clone --depth 1 https://github.com/api7/ngx_dynamic_upstream.git || {
-        warn "ngx_dynamic_upstream nie je dostupný, skúšam alternatívny zdroj..."
+    # Použijeme protokol git:// namiesto https:// aby sme sa vyhli autentifikácii
+    git clone --depth 1 git://github.com/api7/ngx_dynamic_upstream.git 2>/dev/null || {
+        warn "ngx_dynamic_upstream nie je dostupný cez git://, skúšam alternatívny zdroj..."
         # Alternatívny zdroj pre Dynamic Upstream Module
-        git clone --depth 1 https://github.com/vozlt/nginx-dynamic-upstream.git ngx_dynamic_upstream || warn "Nepodarilo sa stiahnuť Dynamic Upstream Module, preskakujem..."
+        git clone --depth 1 git://github.com/vozlt/nginx-dynamic-upstream.git ngx_dynamic_upstream 2>/dev/null || {
+            warn "Nepodarilo sa stiahnuť Dynamic Upstream Module cez git://, skúšam anonymný https..."
+            git clone --depth 1 https://github.com/api7/ngx_dynamic_upstream.git || {
+                git clone --depth 1 https://github.com/vozlt/nginx-dynamic-upstream.git ngx_dynamic_upstream || 
+                warn "Nepodarilo sa stiahnuť Dynamic Upstream Module, preskakujem..."
+            }
+        }
     }
 fi
 
