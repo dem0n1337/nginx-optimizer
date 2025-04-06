@@ -36,7 +36,7 @@ GITHUB_REPO="nginx-optimizer"
 GITHUB_BRANCH="master"  # Používame vetvu master
 
 # URL pre raw súbory na GitHub
-GITHUB_RAW_URL="[https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$GITHUB_BRANCH"](https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$GITHUB_BRANCH")
+GITHUB_RAW_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$GITHUB_BRANCH"
 
 # Vytvorenie dočasného adresára
 TMP_DIR=$(mktemp -d)

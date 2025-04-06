@@ -46,7 +46,25 @@ case $OS in
           libcurl4-openssl-dev automake libtool autoconf libyajl-dev pkgconf doxygen \
           cmake g++ python3 bison flex libpng-dev libjpeg-dev uuid-dev libicu-dev \
           gperftools libgoogle-perftools-dev libunwind-dev libpam0g-dev libtbb-dev \
-          libluajit-5.1-dev lua5.1 liblua5.1-dev libmhash-dev libexpat1-dev libjemalloc-dev
+          libluajit-5.1-dev lua5.1 liblua5.1-dev libmhash-dev libexpat1-dev libjemalloc-dev \
+          libhiredis-dev libmaxminddb-dev libsodium-dev libcjson-dev \
+          libpcre2-dev libcap-dev libelf-dev rustc cargo \
+          zstd libzstd-dev libbrotli-dev autoconf automake libtool bc \
+          openssl libssl3 libssl-dev
+        
+        # Kontrola verzie OpenSSL a prípadný upgrade na 3.x
+        if openssl version | grep -q "OpenSSL 1"; then
+            info "Detekovaná OpenSSL verzia 1.x, pokúšam sa aktualizovať na OpenSSL 3.x..."
+            # Pre Ubuntu 20.04 a staršie verzie je potrebné pridať PPA
+            if [ -f /etc/lsb-release ] && grep -q "Ubuntu" /etc/lsb-release; then
+                UBUNTU_VERSION=$(lsb_release -rs)
+                if (( $(echo "$UBUNTU_VERSION < 22.04" | bc -l) )); then
+                    add-apt-repository -y ppa:ondrej/openssl
+                    apt update
+                    apt install -y libssl3 libssl-dev
+                fi
+            fi
+        fi
         ;;
     centos|rhel|fedora|rocky|almalinux)
         info "Inštalujem závislosti pre RHEL/CentOS/Fedora/Rocky/AlmaLinux..."
@@ -58,7 +76,10 @@ case $OS in
               libcurl-devel automake libtool autoconf yajl-devel pkgconfig doxygen \
               cmake gcc-c++ python3 bison flex libpng-devel libjpeg-devel libuuid-devel libicu-devel \
               gperftools gperftools-devel libunwind-devel pam-devel tbb-devel \
-              luajit-devel lua lua-devel mhash-devel expat-devel jemalloc-devel
+              luajit-devel lua lua-devel mhash-devel expat-devel jemalloc-devel \
+              hiredis-devel libmaxminddb-devel libsodium-devel cjson-devel \
+              pcre2-devel libcap-devel elfutils-libelf-devel rust cargo \
+              zstd zstd-devel brotli-devel autoconf automake libtool bc
         else
             dnf install -y epel-release
             dnf groupinstall -y 'Development Tools'
@@ -67,7 +88,24 @@ case $OS in
               libcurl-devel automake libtool autoconf yajl-devel pkgconf doxygen \
               cmake gcc-c++ python3 bison flex libpng-devel libjpeg-devel libuuid-devel libicu-devel \
               gperftools gperftools-devel libunwind-devel pam-devel tbb-devel \
-              luajit-devel lua lua-devel mhash-devel expat-devel jemalloc-devel
+              luajit-devel lua lua-devel mhash-devel expat-devel jemalloc-devel \
+              hiredis-devel libmaxminddb-devel libsodium-devel cjson-devel \
+              pcre2-devel libcap-devel elfutils-libelf-devel rust cargo \
+              zstd zstd-devel brotli-devel autoconf automake libtool bc
+              
+            # Kontrola verzie OpenSSL
+            if [ "$OS" = "centos" ] || [ "$OS" = "rhel" ] || [ "$OS" = "rocky" ] || [ "$OS" = "almalinux" ]; then
+                if openssl version | grep -q "OpenSSL 1"; then
+                    info "Detekovaná OpenSSL verzia 1.x, pokúšam sa aktualizovať na OpenSSL 3.x..."
+                    if [ "$OS" = "centos" ] && [ "$VERSION" -ge 8 ]; then
+                        dnf -y --enablerepo=powertools install openssl11 openssl11-devel
+                    else
+                        # Pre RHEL/Rocky/AlmaLinux
+                        dnf -y module enable openssl
+                        dnf -y install openssl openssl-devel
+                    fi
+                fi
+            fi
         fi
         ;;
     *)
@@ -84,6 +122,9 @@ chmod +x /etc/profile.d/ccache.sh
 # Nastavenie jemalloc
 info "Nastavujem jemalloc..."
 echo '/usr/local/lib' > /etc/ld.so.conf.d/jemalloc.conf
+# Optimalizácie pre jemalloc
+echo 'export MALLOC_CONF="background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000,tcache:true"' >> /etc/profile.d/jemalloc.sh
+chmod +x /etc/profile.d/jemalloc.sh
 ldconfig
 
 info "Všetky závislosti boli úspešne nainštalované."
