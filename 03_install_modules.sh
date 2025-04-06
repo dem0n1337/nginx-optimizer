@@ -134,7 +134,8 @@ if [ -d "$BUILD_DIR/ModSecurity" ]; then
     bash -c "AUTOMAKE_ARGS='-Wno-unused-g++' ./build.sh" || true
     
     # Špeciálna konfigurácia s podporou pre YAJL
-    ./configure --with-pcre=/usr/bin/pcre-config --with-lmdb --with-yajl --with-curl --enable-json-logging
+    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib64:/usr/local/lib"
+    ./configure --with-pcre=/usr/bin/pcre-config --with-lmdb=/usr --with-yajl=/usr --with-curl --enable-json-logging
     make -j$(nproc)
     make install
     cd $BUILD_DIR
@@ -243,35 +244,6 @@ fi
 # Pripravíme adresár pre dynamické moduly
 mkdir -p /usr/local/nginx/conf
 touch /usr/local/nginx/conf/dynamic-modules-includes.conf
-
-# Aplikácia patchov na NGINX zdrojový kód
-info "Aplikujem patche na NGINX zdrojový kód..."
-cd nginx-$NGINX_VERSION
-
-# Generické patche
-patch -p1 < ../patches/pcre-jit.patch || warn "PCRE JIT patch sa nepodarilo aplikovať"
-patch -p1 < ../patches/tls-dynamic.patch || warn "TLS Dynamic Records patch sa nepodarilo aplikovať"
-# Aplikácia OpenSSL 3.x kompatibilného patchu
-patch -p1 < ../patches/openssl3-compatibility.patch || warn "OpenSSL 3.x compatibility patch sa nepodarilo aplikovať"
-
-# AWS-LC špecifické patche podľa verzie Nginx
-NGINX_VER_NUM=$(echo $NGINX_VERSION | sed 's/\.//g')
-if [ "$NGINX_VER_NUM" -ge 1274 ]; then
-  info "Aplikujem AWS-LC patche pre Nginx 1.27.4+"
-  patch -p1 < ../patches/aws-lc-nginx-1.27.4.patch || warn "AWS-LC patch pre Nginx 1.27.4+ sa nepodarilo aplikovať"
-  # Dodatočný patch pre $ssl_curve podporu s AWS-LC
-  patch -p1 < ../patches/aws-lc-nginx2.patch || warn "AWS-LC ssl_curve patch sa nepodarilo aplikovať"
-elif [ "$NGINX_VER_NUM" -ge 1273 ]; then
-  info "Aplikujem AWS-LC patche pre Nginx 1.27.3+"
-  patch -p1 < ../patches/aws-lc-nginx-1.27.3.patch || warn "AWS-LC patch pre Nginx 1.27.3+ sa nepodarilo aplikovať"
-  # Dodatočný patch pre $ssl_curve podporu s AWS-LC
-  patch -p1 < ../patches/aws-lc-nginx2.patch || warn "AWS-LC ssl_curve patch sa nepodarilo aplikovať"
-else
-  info "Aplikujem generické AWS-LC patche"
-  patch -p1 < ../patches/aws-lc-nginx.patch || warn "AWS-LC generický patch sa nepodarilo aplikovať"
-fi
-
-cd ..
 
 info "Inštalácia a príprava modulov bola úspešne dokončená."
 exit 0

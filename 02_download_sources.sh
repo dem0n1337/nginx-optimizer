@@ -302,24 +302,25 @@ info "Sťahujem LuaRocks..."
 clone_repo "https://github.com/luarocks/luarocks.git" "luarocks" "LuaRocks"
 
 # Vytvorenie adresára pre patche, ak neexistuje
-if [ ! -d "patches" ]; then
-    info "Sťahujem patche..."
-    mkdir -p patches
-    cd patches
+mkdir -p patches
+cd patches
 
-    # PCRE JIT patch
+# PCRE JIT patch - This is downloaded but seems empty/corrupt, keeping download but it's not used
+if [ ! -f "pcre-jit.patch" ]; then
     wget -q -O pcre-jit.patch https://raw.githubusercontent.com/nginx-modules/ngx_http_tls_dyn_size/master/patches/nginx__dynamic_tls_records_1.17.7%2B.patch || warn "Nepodarilo sa stiahnuť pcre-jit.patch"
-
-    # TLS Dynamic Records patch
-    wget -q -O tls-dynamic.patch https://raw.githubusercontent.com/kn007/patch/master/nginx_dynamic_tls_records.patch || warn "Nepodarilo sa stiahnuť tls-dynamic.patch"
-
-    # Pridanie OpenSSL 3.x patch (pre kompatibilitu)
-    wget -q -O openssl3-compatibility.patch https://raw.githubusercontent.com/nginx-modules/headers-more-nginx-module/master/patches/openssl3-compat.patch || warn "Nepodarilo sa stiahnuť openssl3-compatibility.patch"
-
-    cd ..
-else
-    warn "Adresár patches už existuje, preskakujem sťahovanie patchov..."
 fi
+
+# TLS Dynamic Records patch
+if [ ! -f "tls-dynamic.patch" ]; then
+    wget -q -O tls-dynamic.patch https://raw.githubusercontent.com/kn007/patch/master/nginx_dynamic_tls_records.patch || warn "Nepodarilo sa stiahnuť tls-dynamic.patch"
+fi
+
+# Pridanie OpenSSL 3.x patch (pre kompatibilitu)
+if [ ! -f "openssl3-compatibility.patch" ]; then
+    wget -q -O openssl3-compatibility.patch https://raw.githubusercontent.com/nginx-modules/headers-more-nginx-module/master/patches/openssl3-compat.patch || warn "Nepodarilo sa stiahnuť openssl3-compatibility.patch"
+fi
+
+cd ..
 
 info "Sťahovanie zdrojových kódov bolo úspešne dokončené."
 echo "NGINX_VERSION=$NGINX_VERSION" > $BUILD_DIR/build_config.env

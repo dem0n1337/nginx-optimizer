@@ -88,7 +88,7 @@ case $OS in
                 info "Povoľujem CRB repozitár pre $OS..."
                 dnf config-manager --set-enabled crb || :
                 # Alternatívny spôsob povolenia PowerTools/CRB pre staršie verzie
-                if [ "$VERSION" -lt 9 ]; then
+                if echo "$VERSION < 9.0" | bc -l | grep -q 1; then
                     dnf config-manager --set-enabled powertools || :
                 fi
             fi
