@@ -13,15 +13,15 @@ NC='\033[0m' # No Color
 
 # Funkcie pre výpis správ
 info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+    echo -e "${GREEN}[INFO]${NC} $1" >&2 # Redirect to stderr
 }
 
 warn() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[WARNING]${NC} $1" >&2 # Redirect to stderr
 }
 
 error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} $1" >&2 # Redirect to stderr
     exit 1
 }
 
@@ -127,8 +127,10 @@ if [ -d "$BUILD_DIR/aws-lc" ]; then
             export CC=gcc CXX=g++ # Use plain compilers
             info "Compiling AWS-LC without ccache..."
 
-            if cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF .. && \
+            # --- FIX: Explicitly set assembler to avoid ccache issues ---
+            if cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF -DCMAKE_ASM_COMPILER=/usr/bin/as .. && \
                make -j$(nproc); then
+            # --- END FIX ---
                 info "AWS-LC successfully compiled."
                 USE_AWS_LC=y
             else
