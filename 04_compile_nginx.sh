@@ -264,8 +264,8 @@ generate_nginx_config_args() {
         "$BUILD_DIR/redis2-nginx-module"
         "$BUILD_DIR/nginx-rtmp-module"
         "$BUILD_DIR/ngx_http_geoip2_module"
-        "$BUILD_DIR/lua-nginx-module"
-        "$BUILD_DIR/ngx_devel_kit" # Required by Lua
+        # "$BUILD_DIR/lua-nginx-module" # REMOVED
+        # "$BUILD_DIR/ngx_devel_kit" # REMOVED - Required by Lua
         "$BUILD_DIR/ngx_http_substitutions_filter_module"
         "$BUILD_DIR/ngx_dynamic_upstream"
         "$BUILD_DIR/ngx_http_auth_pam_module"
@@ -307,8 +307,8 @@ generate_nginx_config_args() {
     ld_opts="$ld_opts -L/usr/local/lib"
 
     # Add LuaJIT paths
-    cc_opts="$cc_opts -I$LUAJIT_INC"
-    ld_opts="$ld_opts -L$LUAJIT_LIB"
+    # cc_opts="$cc_opts -I$LUAJIT_INC" # REMOVED
+    # ld_opts="$ld_opts -L$LUAJIT_LIB" # REMOVED
 
     # Add standard libraries to link against (ensure space separation)
     ld_opts="$ld_opts -lpcre -lssl -lcrypto -ldl -lz"

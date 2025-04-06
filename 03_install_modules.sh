@@ -164,36 +164,6 @@ if [ -d "boringssl" ]; then
     export BORINGSSL_PATH="$BUILD_DIR/boringssl"
 fi
 
-# Príprava LuaJIT
-info "Kompilujem LuaJIT..."
-git clone --depth 1 https://github.com/openresty/luajit2.git
-cd luajit2
-make -j$(nproc)
-make install
-export LUAJIT_LIB=/usr/local/lib
-export LUAJIT_INC=/usr/local/include/luajit-2.1
-cd ..
-
-# Inštalácia LuaRocks
-info "Inštalujem LuaRocks..."
-cd luarocks
-./configure --with-lua-include=/usr/local/include/luajit-2.1
-make -j$(nproc)
-make install
-cd ..
-
-# Inštalácia Lua Resty modulov
-info "Inštalujem Lua Resty moduly..."
-# lua-resty-core
-cd lua-resty-core
-make install
-cd ..
-
-# lua-resty-lrucache
-cd lua-resty-lrucache
-make install
-cd ..
-
 # Inštalácia ngx_small_light pre optimalizáciu obrázkov
 if [ -d "ngx_small_light" ]; then
     info "Inštalujem ngx_small_light závislosti..."
