@@ -106,7 +106,8 @@ NGINX_LUA_PATCH=${NGINX_LUA_PATCH:-n} # Enables the set of OpenResty core patche
 FREENGINX_BACKPORT_PATCHES=${FREENGINX_BACKPORT_PATCHES:-n}
 
 # Base flags (adjust as needed, these are examples)
-BASE_CFLAGS="-O3"
+# BASE_CFLAGS="-O3" # REMOVED - Let Nginx handle optimization
+# BASE_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -pie" # REMOVED - Let Nginx handle linker flags
 
 # TLS Library selection (prioritize user's choice: AWS-LC > OpenSSL 3 > BoringSSL > System)
 USE_AWS_LC=n
@@ -129,7 +130,7 @@ fi
 # Function to generate Nginx configure arguments dynamically
 generate_nginx_config_args() {
     local args=""
-    local cc_opts="$BASE_CFLAGS"
+    local cc_opts="$cc_opts -I/usr/local/include -I/usr/include"
 
     # --- Basic Paths and User ---
     args="$args --prefix=$INSTALL_DIR"
@@ -293,7 +294,8 @@ generate_nginx_config_args() {
     done
 
     # --- Compiler and Linker Flags Finalization ---
-    cc_opts="$BASE_CFLAGS $cc_opts -I/usr/local/include -I/usr/include"
+    # Combine necessary includes
+    cc_opts="$cc_opts -I/usr/local/include -I/usr/include"
 
     # Add LuaJIT paths
     # cc_opts="$cc_opts -I$LUAJIT_INC" # REMOVED
@@ -308,6 +310,7 @@ generate_nginx_config_args() {
     fi
 
     args="$args --with-cc-opt='$cc_opts'"
+    # args="$args --with-ld-opt='$ld_opts'" # REMOVED - Let Nginx handle linker flags
 
     echo "$args"
 }
