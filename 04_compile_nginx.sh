@@ -106,7 +106,7 @@ NGINX_LUA_PATCH=${NGINX_LUA_PATCH:-n} # Enables the set of OpenResty core patche
 FREENGINX_BACKPORT_PATCHES=${FREENGINX_BACKPORT_PATCHES:-n}
 
 # Base flags (adjust as needed, these are examples)
-BASE_CFLAGS="-O3 -fstack-protector-strong -flto=auto -fPIC -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2"
+BASE_CFLAGS="-O3 -flto=auto -fPIC -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2"
 BASE_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC -flto=auto -pie"
 
 # TLS Library selection (prioritize user's choice: AWS-LC > OpenSSL 3 > BoringSSL > System)
@@ -126,14 +126,18 @@ if [ -d "$BUILD_DIR/aws-lc" ]; then
             OLD_CC="$CC"; OLD_CXX="$CXX"
             export CC=gcc CXX=g++ # Use plain compilers
             info "Compiling AWS-LC without ccache..."
+            
+            # --- FIX: Temporarily remove ccache from PATH for AWS-LC build ---
+            ORIGINAL_PATH="$PATH"
+            PATH=$(echo "$PATH" | sed 's|/usr/lib/ccache:||g; s|:/usr/lib/ccache||g')
+            info "Temporarily adjusted PATH for AWS-LC: $PATH"
+            
+            # Ensure CFLAGS/CXXFLAGS are unset before cmake/make
+            OLD_CFLAGS="$CFLAGS"; OLD_CXXFLAGS="$CXXFLAGS"
+            unset CFLAGS CXXFLAGS
+            info "Temporarily unset CFLAGS/CXXFLAGS for AWS-LC cmake & make..."
 
-            # --- FIX: Explicitly set assembler to avoid ccache issues ---
             if cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF -DCMAKE_ASM_COMPILER=/usr/bin/as ..; then
-                # --- FIX: Unset CFLAGS/CXXFLAGS for make to avoid assembler issues ---
-                OLD_CFLAGS="$CFLAGS"; OLD_CXXFLAGS="$CXXFLAGS"
-                unset CFLAGS CXXFLAGS
-                info "Temporarily unset CFLAGS/CXXFLAGS for AWS-LC make..."
-                
                 if make -j$(nproc); then
                     info "AWS-LC successfully compiled."
                     USE_AWS_LC=y
@@ -141,13 +145,16 @@ if [ -d "$BUILD_DIR/aws-lc" ]; then
                     warn "AWS-LC compilation failed. QUIC/HTTP3 might not be available."
                     USE_AWS_LC=n
                 fi
-                # Restore CFLAGS/CXXFLAGS
-                export CFLAGS="$OLD_CFLAGS" CXXFLAGS="$OLD_CXXFLAGS"
-                info "Restored CFLAGS/CXXFLAGS to: $CFLAGS / $CXXFLAGS"
             else
                  warn "AWS-LC cmake failed."
                  USE_AWS_LC=n
             fi
+            
+            # Restore original PATH, CFLAGS, CXXFLAGS
+            export PATH="$ORIGINAL_PATH"
+            export CFLAGS="$OLD_CFLAGS" CXXFLAGS="$OLD_CXXFLAGS"
+            info "Restored PATH to: $PATH"
+            info "Restored CFLAGS/CXXFLAGS to: $CFLAGS / $CXXFLAGS"
             # --- END FIX ---
 
             # Restore original CC/CXX
@@ -317,7 +324,7 @@ generate_nginx_config_args() {
         "$BUILD_DIR/njs/nginx" # Path for NJS module
         "$BUILD_DIR/ngx_small_light"
         "$BUILD_DIR/ngx-fancyindex"
-        "$BUILD_DIR/ModSecurity-nginx" # Added dynamic based on user script
+        # "$BUILD_DIR/ModSecurity-nginx" # Added dynamic based on user script - REMOVED
     )
     # Add upload module variations
     if [ -d "$BUILD_DIR/nginx-upload-progress-module" ]; then

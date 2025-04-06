@@ -120,36 +120,6 @@ else
     info "YAJL už je nainštalovaný, pokračujem ďalej..."
 fi
 
-# Kompilácia libmodsecurity
-if [ -d "$BUILD_DIR/ModSecurity" ]; then
-    info "Kompilujem libmodsecurity..."
-    cd $BUILD_DIR/ModSecurity
-
-    # --- FIX: Configure Git Identity ---
-    info "Temporarily configuring Git identity for ModSecurity build..."
-    git config user.email "jakub@demovic.net"
-    git config user.name "dem0n1337"
-    # --- END FIX ---
-
-    git submodule init
-    git submodule update
-    
-    # Vytvorím umelý tag pre potlačenie "No names found" chyby
-    git tag -a v3.0.0 -m "Temporary tag for build" || true
-    
-    # Použiť bash na obídenie problémov s git
-    bash -c "AUTOMAKE_ARGS='-Wno-unused-g++' ./build.sh" || true
-    
-    # Špeciálna konfigurácia s podporou pre YAJL
-    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib64:/usr/local/lib"
-    # --- FIX: Let pkg-config find YAJL --- 
-    ./configure --with-pcre=/usr/bin/pcre-config --with-lmdb=/usr --with-yajl --with-curl || error "ModSecurity configuration failed"
-    # --- END FIX ---
-    make -j$(nproc)
-    make install
-    cd $BUILD_DIR
-fi
-
 # Kompilácia AWS-LC pre podporu QUIC/HTTP3
 info "Kompilujem AWS-LC pre podporu QUIC/HTTP3..."
 if [ -d "aws-lc" ]; then
