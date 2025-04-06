@@ -65,18 +65,25 @@ cd nginx-$NGINX_VERSION
 # Kontrola podpory QUIC/HTTP3 s AWS-LC
 QUIC_AVAILABLE=0
 if [ -d "$BUILD_DIR/aws-lc" ]; then
-    if [ -d "$BUILD_DIR/aws-lc/build" ]; then
+    if [ -d "$BUILD_DIR/aws-lc/build" ] && [ -f "$BUILD_DIR/aws-lc/build/ssl/libssl.a" ]; then
         info "Detekovaný AWS-LC, QUIC/HTTP3 bude povolený..."
         QUIC_AVAILABLE=1
     else
-        info "AWS-LC nájdený, ale build adresár chýba, vytváram ho..."
+        info "AWS-LC nájdený, ale build adresár chýba alebo nie je kompletný, pokúšam sa ho vytvoriť..."
         cd $BUILD_DIR/aws-lc
         mkdir -p build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release ..
-        make -j$(nproc)
+        if command -v go >/dev/null 2>&1; then
+            if cmake -DCMAKE_BUILD_TYPE=Release .. && make -j$(nproc); then
+                info "AWS-LC úspešne skompilovaný, povolím QUIC/HTTP3"
+                QUIC_AVAILABLE=1
+            else
+                warn "Kompilácia AWS-LC zlyhala, QUIC/HTTP3 nebude povolený"
+            fi
+        else
+            warn "Go (golang) nie je nainštalovaný, AWS-LC nemôže byť skompilovaný, QUIC/HTTP3 nebude povolený"
+        fi
         cd $BUILD_DIR/nginx-$NGINX_VERSION
-        QUIC_AVAILABLE=1
     fi
 fi
 

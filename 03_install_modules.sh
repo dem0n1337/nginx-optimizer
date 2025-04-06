@@ -123,10 +123,18 @@ if [ -d "aws-lc" ]; then
     cd aws-lc
     mkdir -p build
     cd build
-    cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 ..
-    make -j$(nproc)
+    if command -v go >/dev/null 2>&1; then
+        info "Go (golang) nájdený, pokračujem v kompilácii AWS-LC..."
+        if cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=0 .. && make -j$(nproc); then
+            info "AWS-LC úspešne skompilovaný"
+            export AWS_LC_PATH="$BUILD_DIR/aws-lc"
+        else
+            warn "Kompilácia AWS-LC zlyhala, QUIC/HTTP3 nemusí fungovať správne"
+        fi
+    else
+        warn "Go (golang) nie je nainštalovaný, AWS-LC nemôže byť skompilovaný, QUIC/HTTP3 nebude dostupný"
+    fi
     cd ../..
-    export AWS_LC_PATH="$BUILD_DIR/aws-lc"
 else
     warn "AWS-LC adresár neexistuje, QUIC/HTTP3 nemusí fungovať správne..."
 fi

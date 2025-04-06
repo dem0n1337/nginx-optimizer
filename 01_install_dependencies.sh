@@ -50,7 +50,7 @@ case $OS in
           libhiredis-dev libmaxminddb-dev libsodium-dev libcjson-dev \
           libpcre2-dev libcap-dev libelf-dev rustc cargo \
           zstd libzstd-dev libbrotli-dev autoconf automake libtool bc \
-          openssl libssl3 libssl-dev
+          openssl libssl3 libssl-dev golang-go
         
         # Kontrola verzie OpenSSL a prípadný upgrade na 3.x
         if openssl version | grep -q "OpenSSL 1"; then
@@ -79,7 +79,7 @@ case $OS in
               luajit-devel lua lua-devel mhash-devel expat-devel jemalloc-devel \
               hiredis-devel libmaxminddb libsodium-devel cjson-devel \
               pcre2-devel libcap-devel libelf-devel rust cargo \
-              zstd libzstd-devel brotli-devel autoconf automake libtool bc yajl-devel
+              zstd libzstd-devel brotli-devel autoconf automake libtool bc yajl-devel golang
         else
             dnf install -y epel-release
             
@@ -101,7 +101,7 @@ case $OS in
               gperftools gperftools-devel pam-devel \
               luajit lua lua-devel expat-devel jemalloc-devel \
               pcre2-devel libcap-devel elfutils-libelf-devel rust cargo \
-              zstd libzstd-devel brotli-devel autoconf automake libtool bc yajl-devel
+              zstd libzstd-devel brotli-devel autoconf automake libtool bc yajl-devel golang
               
             # Pokus o inštaláciu dodatočných závislostí, ignorovanie chýb
             dnf install -y libunwind-devel tbb-devel hiredis-devel libsodium-devel cjson-devel || :
