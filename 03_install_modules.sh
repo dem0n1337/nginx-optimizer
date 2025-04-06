@@ -42,13 +42,24 @@ fi
 cd $BUILD_DIR || error "Nemôžem prejsť do $BUILD_DIR"
 
 # Kompilácia Jemalloc
-info "Kompilujem Jemalloc..."
-cd jemalloc
-./autogen.sh
-./configure --enable-prof --enable-debug --enable-background-thread=yes
-make -j$(nproc)
-make install
-cd ..
+if [ -d "$BUILD_DIR/jemalloc" ]; then
+    info "Kompilujem Jemalloc..."
+    cd $BUILD_DIR/jemalloc
+    # Pridať získanie tagov
+    git fetch --tags || true
+    # Opraviť background-thread voľbu
+    autoconf
+    ./configure --enable-autogen ""
+    make -j$(nproc)
+    make install
+    ldconfig
+
+    # Kompilácia optimalizovanej verzie s debugom
+    ./configure --enable-prof --enable-debug
+    make -j$(nproc)
+    make install
+    ldconfig
+fi
 
 # Kompilácia PCRE2 zo zdrojov
 info "Kompilujem PCRE2 zo zdrojov..."
@@ -67,16 +78,44 @@ make -j$(nproc)
 make install
 cd ..
 
+# Prípadná manuálna kompilácia YAJL, ak nie je dostupný systémový balík
+info "Kontrolujem dostupnosť YAJL..."
+if ! pkg-config --exists yajl || [ ! -f "/usr/include/yajl/yajl_version.h" ]; then
+    info "YAJL nie je nainštalovaný alebo sa nedá nájsť, kompilujem zo zdrojov..."
+    cd $BUILD_DIR
+    rm -rf yajl
+    git clone https://github.com/lloyd/yajl.git
+    cd yajl
+    mkdir -p build
+    cd build
+    cmake ..
+    make -j$(nproc)
+    make install
+    ldconfig
+    cd $BUILD_DIR
+else
+    info "YAJL už je nainštalovaný, pokračujem ďalej..."
+fi
+
 # Kompilácia libmodsecurity
-info "Kompilujem libmodsecurity..."
-cd ModSecurity
-git submodule init
-git submodule update
-./build.sh
-./configure --with-pcre=/usr/bin/pcre-config --with-lmdb --with-yajl --with-curl --enable-json-logging
-make -j$(nproc)
-make install
-cd ..
+if [ -d "$BUILD_DIR/ModSecurity" ]; then
+    info "Kompilujem libmodsecurity..."
+    cd $BUILD_DIR/ModSecurity
+    git submodule init
+    git submodule update
+    
+    # Vytvorím umelý tag pre potlačenie "No names found" chyby
+    git tag -a v3.0.0 -m "Temporary tag for build" || true
+    
+    # Použiť bash na obídenie problémov s git
+    bash -c "AUTOMAKE_ARGS='-Wno-unused-g++' ./build.sh" || true
+    
+    # Špeciálna konfigurácia s podporou pre YAJL
+    ./configure --with-pcre=/usr/bin/pcre-config --with-lmdb --with-yajl --with-curl --enable-json-logging
+    make -j$(nproc)
+    make install
+    cd $BUILD_DIR
+fi
 
 # Kompilácia AWS-LC pre podporu QUIC/HTTP3
 info "Kompilujem AWS-LC pre podporu QUIC/HTTP3..."

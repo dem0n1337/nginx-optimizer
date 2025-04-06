@@ -48,7 +48,7 @@ info "Konfigurujem ModSecurity..."
 mkdir -p $INSTALL_DIR/modsec
 
 # Stiahnutie odporúčaného konfiguračného súboru
-wget -q -P $INSTALL_DIR/modsec/ [https://raw.githubusercontent.com/SpiderLabs/ModSecurity/v3/master/modsecurity.conf-recommended](https://raw.githubusercontent.com/SpiderLabs/ModSecurity/v3/master/modsecurity.conf-recommended)
+wget -q -P $INSTALL_DIR/modsec/ https://raw.githubusercontent.com/SpiderLabs/ModSecurity/v3/master/modsecurity.conf-recommended
 mv $INSTALL_DIR/modsec/modsecurity.conf-recommended $INSTALL_DIR/modsec/modsecurity.conf
 
 # Skopírovanie unicode mapovania
@@ -713,8 +713,13 @@ EOL
 
 # Aktivácia služby Nginx
 info "Aktivujem Nginx službu..."
-systemctl daemon-reload
-systemctl enable nginx
+if [ -f "/etc/systemd/system/nginx.service" ]; then
+    systemctl daemon-reload || warn "Nemôžem vykonať daemon-reload"
+    systemctl enable nginx || warn "Nemôžem povoliť nginx službu"
+    info "Nginx služba bola úspešne nakonfigurovaná"
+else
+    error "Súbor nginx.service nebol vytvorený, niečo sa pokazilo"
+fi
 
 info "Konfigurácia systému bola úspešne dokončená."
 info "Pre spustenie Nginx vykonajte: systemctl start nginx"

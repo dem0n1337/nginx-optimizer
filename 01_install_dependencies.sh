@@ -78,8 +78,8 @@ case $OS in
               gperftools gperftools-devel libunwind-devel pam-devel tbb-devel \
               luajit-devel lua lua-devel mhash-devel expat-devel jemalloc-devel \
               hiredis-devel libmaxminddb libsodium-devel cjson-devel \
-              pcre2-devel libcap-devel elfutils-libelf-devel rust cargo \
-              zstd libzstd-devel brotli-devel autoconf automake libtool bc
+              pcre2-devel libcap-devel libelf-devel rust cargo \
+              zstd libzstd-devel brotli-devel autoconf automake libtool bc yajl-devel
         else
             dnf install -y epel-release
             
@@ -101,7 +101,7 @@ case $OS in
               gperftools gperftools-devel pam-devel \
               luajit lua lua-devel expat-devel jemalloc-devel \
               pcre2-devel libcap-devel elfutils-libelf-devel rust cargo \
-              zstd libzstd-devel brotli-devel autoconf automake libtool bc
+              zstd libzstd-devel brotli-devel autoconf automake libtool bc yajl-devel
               
             # Pokus o inštaláciu dodatočných závislostí, ignorovanie chýb
             dnf install -y libunwind-devel tbb-devel hiredis-devel libsodium-devel cjson-devel || :

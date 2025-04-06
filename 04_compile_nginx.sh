@@ -64,9 +64,20 @@ cd nginx-$NGINX_VERSION
 
 # Kontrola podpory QUIC/HTTP3 s AWS-LC
 QUIC_AVAILABLE=0
-if [ -d "$BUILD_DIR/aws-lc" ] && [ -d "$BUILD_DIR/aws-lc/build" ]; then
-    info "Detekovaný AWS-LC, QUIC/HTTP3 bude povolený..."
-    QUIC_AVAILABLE=1
+if [ -d "$BUILD_DIR/aws-lc" ]; then
+    if [ -d "$BUILD_DIR/aws-lc/build" ]; then
+        info "Detekovaný AWS-LC, QUIC/HTTP3 bude povolený..."
+        QUIC_AVAILABLE=1
+    else
+        info "AWS-LC nájdený, ale build adresár chýba, vytváram ho..."
+        cd $BUILD_DIR/aws-lc
+        mkdir -p build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        make -j$(nproc)
+        cd $BUILD_DIR/nginx-$NGINX_VERSION
+        QUIC_AVAILABLE=1
+    fi
 fi
 
 # Základné konfiguračné parametre
@@ -89,7 +100,7 @@ CONFIG_ARGS="--prefix=$INSTALL_DIR \
   --with-file-aio \
   --with-threads \
   --with-pcre-jit \
-  --with-jemalloc=/usr/local \
+  --with-jemalloc=system \
   --with-debug \
   --with-http_addition_module \
   --with-http_auth_request_module \
