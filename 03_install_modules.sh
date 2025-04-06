@@ -63,20 +63,28 @@ fi
 
 # Kompilácia PCRE2 zo zdrojov
 info "Kompilujem PCRE2 zo zdrojov..."
-cd pcre2-${PCRE2_VERSION}
-./configure --prefix=/usr/local/pcre2 \
-  --enable-jit --enable-pcre2-16 --enable-pcre2-32 --enable-unicode
-make -j$(nproc)
-make install
-cd ..
+if [ -d "$BUILD_DIR/pcre2-${PCRE2_VERSION}" ]; then
+    cd "$BUILD_DIR/pcre2-${PCRE2_VERSION}"
+    ./configure --prefix=/usr/local/pcre2 \
+    --enable-jit --enable-pcre2-16 --enable-pcre2-32 --enable-unicode
+    make -j$(nproc)
+    make install
+    cd "$BUILD_DIR"
+else
+    warn "Adresár pcre2-${PCRE2_VERSION} nebol nájdený, preskakujem kompiláciu PCRE2."
+fi
 
 # Kompilácia zlib-cloudflare
 info "Kompilujem optimalizovaný zlib od Cloudflare..."
-cd zlib-cloudflare
-./configure --prefix=/usr/local/zlib-cf
-make -j$(nproc)
-make install
-cd ..
+if [ -d "$BUILD_DIR/zlib-cloudflare" ]; then
+    cd "$BUILD_DIR/zlib-cloudflare"
+    ./configure --prefix=/usr/local/zlib-cf
+    make -j$(nproc)
+    make install
+    cd "$BUILD_DIR"
+else
+    warn "Adresár zlib-cloudflare nebol nájdený, preskakujem kompiláciu zlib."
+fi
 
 # Prípadná manuálna kompilácia YAJL, ak nie je dostupný systémový balík
 info "Kontrolujem dostupnosť YAJL..."

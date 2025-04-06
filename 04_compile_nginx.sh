@@ -107,7 +107,7 @@ CONFIG_ARGS="--prefix=$INSTALL_DIR \
   --with-file-aio \
   --with-threads \
   --with-pcre-jit \
-  --with-jemalloc=system \
+  --with-jemalloc \
   --with-debug \
   --with-http_addition_module \
   --with-http_auth_request_module \

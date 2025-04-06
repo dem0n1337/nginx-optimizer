@@ -542,6 +542,9 @@ server {
 }
 EOL
 
+# Vytvorenie adresárov pre skripty
+mkdir -p $INSTALL_DIR/scripts
+
 # Certbot/Let's Encrypt konfigurácia
 mkdir -p /var/www/letsencrypt
 
