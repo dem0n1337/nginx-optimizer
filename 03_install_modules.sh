@@ -142,8 +142,8 @@ if [ -d "$BUILD_DIR/ModSecurity" ]; then
     
     # Špeciálna konfigurácia s podporou pre YAJL
     export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/lib64:/usr/local/lib"
-    # --- FIX: Explicit YAJL Path --- 
-    ./configure --with-pcre=/usr/bin/pcre-config --with-lmdb=/usr --with-yajl=/usr/local --with-curl --enable-json-logging || error "ModSecurity configuration failed"
+    # --- FIX: Let pkg-config find YAJL --- 
+    ./configure --with-pcre=/usr/bin/pcre-config --with-lmdb=/usr --with-yajl --with-curl || error "ModSecurity configuration failed"
     # --- END FIX ---
     make -j$(nproc)
     make install

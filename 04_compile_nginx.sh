@@ -106,7 +106,7 @@ NGINX_LUA_PATCH=${NGINX_LUA_PATCH:-n} # Enables the set of OpenResty core patche
 FREENGINX_BACKPORT_PATCHES=${FREENGINX_BACKPORT_PATCHES:-n}
 
 # Base flags (adjust as needed, these are examples)
-BASE_CFLAGS="-O3 -march=native -mtune=native -fstack-protector-strong -flto=auto -fPIC -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2"
+BASE_CFLAGS="-O3 -fstack-protector-strong -flto=auto -fPIC -fPIE -DTCP_FASTOPEN=23 -fcode-hoisting -DFORTIFY_SOURCE=2"
 BASE_LDFLAGS="-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -fPIC -flto=auto -pie"
 
 # TLS Library selection (prioritize user's choice: AWS-LC > OpenSSL 3 > BoringSSL > System)
@@ -128,15 +128,29 @@ if [ -d "$BUILD_DIR/aws-lc" ]; then
             info "Compiling AWS-LC without ccache..."
 
             # --- FIX: Explicitly set assembler to avoid ccache issues ---
-            if cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF -DCMAKE_ASM_COMPILER=/usr/bin/as .. && \
-               make -j$(nproc); then
-            # --- END FIX ---
-                info "AWS-LC successfully compiled."
-                USE_AWS_LC=y
+            if cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF -DCMAKE_ASM_COMPILER=/usr/bin/as ..; then
+                # --- FIX: Unset CFLAGS/CXXFLAGS for make to avoid assembler issues ---
+                OLD_CFLAGS="$CFLAGS"; OLD_CXXFLAGS="$CXXFLAGS"
+                unset CFLAGS CXXFLAGS
+                info "Temporarily unset CFLAGS/CXXFLAGS for AWS-LC make..."
+                
+                if make -j$(nproc); then
+                    info "AWS-LC successfully compiled."
+                    USE_AWS_LC=y
+                else
+                    warn "AWS-LC compilation failed. QUIC/HTTP3 might not be available."
+                    USE_AWS_LC=n
+                fi
+                # Restore CFLAGS/CXXFLAGS
+                export CFLAGS="$OLD_CFLAGS" CXXFLAGS="$OLD_CXXFLAGS"
+                info "Restored CFLAGS/CXXFLAGS to: $CFLAGS / $CXXFLAGS"
             else
-                warn "AWS-LC compilation failed. QUIC/HTTP3 might not be available."
-                USE_AWS_LC=n 
+                 warn "AWS-LC cmake failed."
+                 USE_AWS_LC=n
             fi
+            # --- END FIX ---
+
+            # Restore original CC/CXX
             export CC="$OLD_CC" CXX="$OLD_CXX"
             info "Restored CC/CXX to: $CC / $CXX"
         else
