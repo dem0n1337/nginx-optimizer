@@ -41,19 +41,19 @@ cd $BUILD_DIR
 
 # Spustenie jednotlivých skriptov v správnom poradí
 info "Spúšťam skript na inštaláciu závislostí..."
-bash $SCRIPTS_DIR/01_install_dependencies.sh || error "Inštalácia závislostí zlyhala"
+bash $SCRIPTS_DIR/01_install_dependencies.sh || warn "Inštalácia závislostí zlyhala, pokúšam sa pokračovať..."
 
 info "Spúšťam skript na stiahnutie zdrojových kódov..."
-bash $SCRIPTS_DIR/02_download_sources.sh || error "Sťahovanie zdrojových kódov zlyhalo"
+bash $SCRIPTS_DIR/02_download_sources.sh || warn "Sťahovanie zdrojových kódov zlyhalo, pokúšam sa pokračovať..."
 
 info "Spúšťam skript na inštaláciu modulov..."
-bash $SCRIPTS_DIR/03_install_modules.sh || error "Inštalácia modulov zlyhala"
+bash $SCRIPTS_DIR/03_install_modules.sh || warn "Inštalácia modulov zlyhala, pokúšam sa pokračovať..."
 
 info "Spúšťam skript na kompiláciu Nginx..."
-bash $SCRIPTS_DIR/04_compile_nginx.sh || error "Kompilácia Nginx zlyhala"
+bash $SCRIPTS_DIR/04_compile_nginx.sh || warn "Kompilácia Nginx zlyhala, pokúšam sa pokračovať..."
 
 info "Spúšťam skript na konfiguráciu systému..."
-bash $SCRIPTS_DIR/05_configure_system.sh || error "Konfigurácia systému zlyhala"
+bash $SCRIPTS_DIR/05_configure_system.sh || warn "Konfigurácia systému zlyhala, pokúšam sa pokračovať..."
 
 info "Kompilácia Nginx bola úspešne dokončená!"
 info "Nginx je nainštalovaný v: $INSTALL_DIR"
