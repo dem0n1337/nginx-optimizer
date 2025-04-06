@@ -219,7 +219,7 @@ generate_nginx_config_args() {
     fi
 
     # TLS Library
-    local openssl_opt="enable-tls1_3 enable-ec_nistp_64_gcc_128 -DOPENSSL_NO_HEARTBEATS"
+    local openssl_opt="-DOPENSSL_NO_HEARTBEATS"
     if [[ "$USE_AWS_LC" = [yY] ]]; then
         info "Configuring with AWS-LC..."
         warn "AWS-LC usage was requested but is disabled, falling back..."
