@@ -3,7 +3,8 @@
 # Autor: Cascade AI
 # Dátum: 6.4.2025
 
-set -e
+# Namiesto set -e použijeme explicitné kontroly návratových kódov
+# set -e
 
 # Farby pre výstup
 GREEN='\033[0;32m'
@@ -22,7 +23,47 @@ warn() {
 
 error() {
     echo -e "${RED}[ERROR]${NC} $1"
-    exit 1
+    return 1  # Namiesto exit 1 použijeme return, aby sa skript nezastavil
+}
+
+# Funkcia pre čistenie neúspešne stiahnutých repozitárov
+cleanup_repo() {
+    local dir="$1"
+    if [ -d "$dir" ]; then
+        # Kontrola, či je to platný git repozitár
+        if [ ! -d "$dir/.git" ] || ! git -C "$dir" rev-parse --git-dir > /dev/null 2>&1; then
+            warn "Našiel som neplatný repozitár $dir, odstraňujem..."
+            rm -rf "$dir"
+            return 0
+        fi
+    fi
+    return 0
+}
+
+# Funkcia pre klonování repozitárov s kontrolou existencie
+clone_repo() {
+    local repo_url="$1"
+    local target_dir="$2"
+    local description="$3"
+    
+    # Najprv vyčistíme neplatný repozitár, ak existuje
+    cleanup_repo "$target_dir"
+    
+    if [ -d "$target_dir" ]; then
+        # Ak adresár stále existuje po čistení, je to platný repozitár
+        warn "$target_dir už existuje a je platný, preskakujem klonování $description..."
+        return 0
+    fi
+    
+    info "Sťahujem $description..."
+    git clone --depth 1 $repo_url $target_dir || {
+        warn "Nepodarilo sa stiahnuť $description, skúšam pokračovať..."
+        # Vyčistíme neúspešný pokus
+        if [ -d "$target_dir" ]; then
+            rm -rf "$target_dir"
+        fi
+        return 1
+    }
 }
 
 # Kontrola BUILD_DIR
@@ -32,7 +73,17 @@ if [ -z "$BUILD_DIR" ]; then
 fi
 
 # Prejsť do pracovného adresára
-cd $BUILD_DIR || error "Nemôžem prejsť do $BUILD_DIR"
+cd $BUILD_DIR || { error "Nemôžem prejsť do $BUILD_DIR"; exit 1; }
+
+# Vyčistenie možných neúspešných predchádzajúcich pokusov
+info "Kontrolujem existujúce repozitáre..."
+for dir in zlib-cloudflare jemalloc ModSecurity ModSecurity-nginx boringssl ngx_pagespeed zstd-nginx-module \
+    ngx_cache_purge headers-more-nginx-module ngx_brotli nginx-module-vts redis2-nginx-module nginx-rtmp-module \
+    ngx_http_geoip2_module lua-nginx-module ngx_devel_kit lua-resty-core lua-resty-lrucache ngx-fancyindex \
+    ngx_http_substitutions_filter_module nginx-upload-progress-module nginx-upload-module ngx_dynamic_upstream \
+    ngx_http_auth_pam_module nginx_http_push_module njs nginx-quic ngx_small_light owasp-modsecurity-crs luarocks; do
+    cleanup_repo "$dir"
+done
 
 # Získať najnovšiu verziu NGINX
 info "Získavam najnovšiu verziu NGINX..."
@@ -41,24 +92,6 @@ if [ -z "$NGINX_VERSION" ]; then
     error "Nepodarilo sa získať verziu NGINX"
 fi
 info "Najnovšia verzia NGINX: $NGINX_VERSION"
-
-# Funkcia pre klonování repozitárov s kontrolou existencie
-clone_repo() {
-    local repo_url="$1"
-    local target_dir="$2"
-    local description="$3"
-    
-    if [ -d "$target_dir" ]; then
-        warn "$target_dir už existuje, preskakujem klonování $description..."
-        return 0
-    fi
-    
-    info "Sťahujem $description..."
-    git clone --depth 1 $repo_url $target_dir || {
-        warn "Nepodarilo sa stiahnuť $description, skúšam pokračovať..."
-        return 1
-    }
-}
 
 # Stiahnutie NGINX
 info "Sťahujem NGINX $NGINX_VERSION..."
