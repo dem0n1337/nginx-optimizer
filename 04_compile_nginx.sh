@@ -259,8 +259,8 @@ generate_nginx_config_args() {
         "$BUILD_DIR/ngx_http_auth_pam_module"
         "$BUILD_DIR/nginx_http_push_module"
         "$BUILD_DIR/njs/nginx" # Path for NJS module
-        "$BUILD_DIR/ngx_small_light"
         "$BUILD_DIR/ngx-fancyindex"
+        "$BUILD_DIR/nginx-upload-module"
         # "$BUILD_DIR/ModSecurity-nginx" # Added dynamic based on user script - REMOVED
     )
     # Add upload module variations
